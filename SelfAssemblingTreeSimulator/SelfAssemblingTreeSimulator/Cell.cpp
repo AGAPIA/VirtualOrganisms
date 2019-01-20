@@ -95,7 +95,7 @@ Cell::Cell() : m_bufferedData((float)g_maxFlowPerCell), m_flowStatistics(nullptr
 bool Cell::isRoot() const
 {
 #if RUNMODE != DIRECTIONAL_MODE
-	assert(m_row != 0 && m_column != MAX_COLS - 1);
+	//assert(m_row != 0 && m_column != MAX_COLS - 1);
 	return m_parent == nullptr;
 #else
 	if (m_cellType != CELL_MEMBRANE)
@@ -224,10 +224,12 @@ void Cell::broadcastMessage(const BroadcastEventType eventType, const BroadcastM
 
 void Cell::onMsgBroadcastStructure(BoardObject* structure)
 {
+
+#if RUNMODE == DIRECTIONAL_MODE
 	if (isRoot())
 		return;
 
-#if RUNMODE == DIRECTIONAL_MODE
+
 	// Follow previous links. Can't get a cycle so no need to protect the flood fill
 	for (int dirIter = 0; dirIter < DIR_COUNT; dirIter++)
 	{
@@ -518,7 +520,8 @@ void Cell::fillChildrenList(Cell* children[], const bool shuffleList /* = false*
 	}
 #else
 	children[0] = m_left;
-	children[1] = m_right;
+	children[1] = m_down;
+	children[2] = children[3] = nullptr;
 #endif
 
 	if (shuffleList)
@@ -570,7 +573,11 @@ void Cell::captureFromChildren(const float capRemaining, const CellType targetCe
 		capacityPerChild[i] = 0.0f;
 		const Cell* child = children[i];
 
-		if (child == nullptr || (targetCellType != CELL_NOTSET && child->m_cellType != targetCellType))
+		if (child == nullptr 
+#if RUNMODE == DIRECTIONAL_MODE
+			|| (targetCellType != CELL_NOTSET && child->m_cellType != targetCellType)
+#endif
+		)
 			continue;
 
 		capacityPerChild[i] = child->getCurrentBufferedCap();
@@ -902,6 +909,7 @@ bool Cell::root_checkRemoveResources(std::ostream& outDebugStream)
 	return false;
 }
 
+#if RUNMODE == DIRECTIONAL_MODE
 float Cell::donateFlow(const float maxFlowToDonate)
 {
 	// IMPORTANT NODE: the buffering data semantic for internal nodes acts as a flow capture limiter per tick
@@ -949,6 +957,7 @@ float Cell::donateFlow(const float maxFlowToDonate)
 		return totalCapUsed;
 	}
 }
+#endif
 
 void Cell::resetCapacityUsedInSubtree()
 {

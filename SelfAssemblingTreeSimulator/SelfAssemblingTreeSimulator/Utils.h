@@ -6,7 +6,7 @@
 
 #define DONATE_INTERNAL
 
-#define RUNMODE DIRECTIONAL_MODE
+#define RUNMODE LEFTRIGHTONLY_MODE
 #define MIN_MEMBRANE_SIZE 7
 #define MAX_MEMBRANE_SIZE 7
 
@@ -17,8 +17,8 @@
 #include <limits.h>
 
 using uint = unsigned int;
-#define MAX_ROWS 20
-#define MAX_COLS 20
+#define MAX_ROWS 10 // For emodel use 20!
+#define MAX_COLS 10
 
 #define INVALID_POS -1
 #define MIN_SCORE 0.0f

@@ -4,6 +4,20 @@ How to Build:
 On Linux: use make from SelfAssemblingTreeSimulator/SelfAssemblingTreeSimulator
 On Windows: You can use visual studio by openening SelfAssemblingTreeSimulator/SelfAssemblingTreeSimulator.sln
 
+###
+Note: If you load your model from a file but you want a number of cols/rows > 10 as the one in the examples, you'll have to modify the code in Utils.h too (MAX_COLS and MAX_ROWS variables).
+
+
+How to switch between 247e and TC
+==================================
+Default model is TC. If you want TC only do not read below in this section.
+If you want to switch do the followings:
+- useEModel=1 in config.ini
+- In code, go to Utils.h, set #define RUNMODE DIRECTIONAL_MODE instead of #define RUNMODE LEFTRIGHTONLY_MODE
+- set the right expressions for rows and columns:  i.e. variables exprForRows and exprForCols in config.ini (you can see a commented examples).
+- In Utils.h, redefine MAX_ROWS and MAX_COLS accordingly. I use 20 for both to see somthing...
+- In Config.ini set the file to load the initial model from fileToInitializeFrom=in_dir.txt (or any other similar file you want to run on).
+- Recompile
 
 How to Execute:
 ===============

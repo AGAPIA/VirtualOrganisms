@@ -148,8 +148,14 @@ bool Simulator::initialize_fromFile(const char* fileToInitializeFrom)
 		}
 	}
 	
-	const int rootColumn = g_247eModelRootCol;
-	const int rootRow = g_247eModelRootRow;
+	// The E model has root at any give pos. In TC it is in upper right
+	int rootColumn = g_247eModelRootCol;
+	int rootRow = g_247eModelRootRow;
+	if (g_useEModel == false)
+	{
+		rootColumn = MAX_COLS - 1;
+		rootRow = 0;
+	}
 
 	m_board.setAvailableSymbols(g_allSymbolsSet);
 	m_board.setRootLocation(rootRow, rootColumn);
@@ -230,7 +236,7 @@ void Simulator::doStepByStepSimulation(const bool writeHelperOutput, std::istrea
 		outStream << "O - Restructure then same as option E (to see restructure affects data flow\n";
 		outStream << "Add/Remove/Modify source: S \n";
 		outStream << "Reorganize: R\n";
-		outStream << "Debug 24e7 model: 1 - Run GB 2-expand external 3-expand internal 4-optimize membrane G 5 - optimize by row/column cut  6 - optimize by corner cut\n";
+		outStream << "Debug 24e7 model (IF ENABLED): 1 - Run GB 2-expand external 3-expand internal 4-optimize membrane G 5 - optimize by row/column cut  6 - optimize by corner cut\n";
 		outStream << "Undo: U \n";
 		outStream << "Save: V   |   Load: W\n";
 		outStream << "Print current board: P\n";
@@ -356,7 +362,7 @@ void Simulator::doStepByStepSimulation(const bool writeHelperOutput, std::istrea
 				printBoard(outStream);
 			}
 			break;
-
+#if RUNMODE == DIRECTIONAL_MODE
 			case '1':
 			{
 				addBoardInHistory(&m_board);
@@ -366,6 +372,7 @@ void Simulator::doStepByStepSimulation(const bool writeHelperOutput, std::istrea
 				printBoard(outStream);
 			}
 			break;
+
 			case '2':
 			{
 				addBoardInHistory(&m_board);
@@ -402,7 +409,7 @@ void Simulator::doStepByStepSimulation(const bool writeHelperOutput, std::istrea
 				m_board.optimizeMembrane_byCutCorners();
 				printBoard(outStream);
 			}break;
-
+#endif
 			case 'U':
 			{
 				undoBoard();

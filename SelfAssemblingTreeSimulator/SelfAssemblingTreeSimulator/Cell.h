@@ -178,9 +178,9 @@ struct Cell
 		return g_symbolToDirection.find(symbol)->second;
 	}
 
-#if RUNMODE == DIRECTIONAL_MODE
+//#if RUNMODE == DIRECTIONAL_MODE
 	CellType m_cellType = CELL_NOTSET;
-#endif
+//#endif
 
 	BoardObject* m_boardView; // This is broadcasted by root. I;m the owner of this, even if it's a pointer
 
@@ -215,9 +215,11 @@ struct Cell
 	// You can specify targetChildCellType which considers only the child cells that has that particular type 
 	void captureFromChildren(const float capRemaining, const CellType targetChildCellType = CELL_NOTSET);
 
+#if RUNMODE == DIRECTIONAL_MODE
 	// Give a maximum amount of flow to donate to this subtree
 	// Return how much it used from that maximum
 	float donateFlow(const float maxFlowToDonate);
+#endif
 
 	void fillChildrenList(Cell* children[], const bool shuffleList = false) const;
 	void fillFollowersList(Cell* followers[], const bool shuffleList = false) const;

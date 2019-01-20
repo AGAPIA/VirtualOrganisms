@@ -135,6 +135,7 @@ struct BoardObject
 	int getNumNeighboors(const TablePos& pos) const;
 	int getNumNeighboors(const int row, const int column) const { return getNumNeighboors(TablePos(row, column)); }
 
+#if RUNMODE == DIRECTIONAL_MODE
 	// Get all cells on membrane
 	void getMembraneCells(std::vector<Cell*>& membraneCells);
 
@@ -145,6 +146,12 @@ struct BoardObject
 	void optimizeMembrane();
 	bool optimizeMembrane_byCutRowCols();
 	bool optimizeMembrane_byCutCorners();
+
+
+	// Collecting top level subtrees below membrane that doesn't meet the required threshold
+	void runGarbageCollector(const float threshold, std::ostream& outStream);
+
+#endif
 
 	// Update root location
 	void updateRootLocation(const int newRootRow, const int newRootCol);
@@ -161,13 +168,8 @@ struct BoardObject
 	// Collects all nodes from a given root and a cell target type to collect
 	void collectAllNodesFromRoot(const Cell* root, std::vector<Cell*>& outList, const CellType targetCellType = CELL_NOTSET);
 
-	// Collecting top level subtrees below membrane that doesn't meet the required threshold
-	void runGarbageCollector(const float threshold, std::ostream& outStream);
-
 	// Garbage collect the subtree starting at cell
 	void garbageCollectSubtree(Cell* root);
-
-	CellType getCellTypeRelativeToMembrane(const int row, const int col) const;
 
 	TablePos selectRandomSource() const;
 
@@ -318,6 +320,10 @@ struct BoardObject
 
 private:
 
+#if RUNMODE == DIRECTIONAL_MODE
+	CellType getCellTypeRelativeToMembrane(const int row, const int col) const;
+
+
 	// Cut membrane functionality
 	//------
 	bool canCutColumn(const int column) const;
@@ -370,6 +376,7 @@ private:
 	bool evaluateMembraneOptimization(int& row, int &col, DIRECTION& outDirToCut, float& flowBenefit);
 
 	// =====
+#endif
 
 	// From symbol to number of collected resources
 	// m_garbageCollectedResources['e'] how many resources are available for type 'e'

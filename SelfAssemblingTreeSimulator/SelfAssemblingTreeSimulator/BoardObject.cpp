@@ -239,6 +239,8 @@ void BoardObject::updateInternalCellsInfo()
 	rootNode->m_column = m_rootCol;
 }
 
+#if RUNMODE == DIRECTIONAL_MODE
+
 CellType BoardObject::decideCellType(const Cell* startCell, const DIRECTION dir)
 {
 	if (startCell == nullptr)
@@ -278,7 +280,6 @@ CellType BoardObject::decideCellType(const Cell* startCell, const DIRECTION dir)
 	*/
 }
 
-#if RUNMODE == DIRECTIONAL_MODE
 void BoardObject::getInflexionPointAndConnectMembrane(std::vector<TablePos>& outInflexionPositions, const bool justGetInflexionPoints)
 {
 	// Iterate over membrane - property : it has only straightforward direction until we get back to the root
@@ -535,9 +536,9 @@ void BoardObject::copyDataFrom(const BoardObject& other)
 			m_board[i][j].m_boardView = this;
 		}
 
-#if RUNMODE == DIRECTIONAL_MODE
+//#if RUNMODE == DIRECTIONAL_MODE
 	setRootLocation(other.m_rootRow, other.m_rootCol);
-#endif
+//#endif
 
 	getRootCell()->initFlowStatistics(g_simulationTicksForDataFlowEstimation);
 
@@ -566,6 +567,8 @@ BoardObject::BoardObject()
 	const int rootColumn = rand() % (MAX_COLS / 3);
 	const int rootRow = rand() % (MAX_ROWS / 3);
 	setRootLocation(rootRow, rootColumn);
+#else
+	setRootLocation(0, MAX_COLS - 1);
 #endif
 
 }
@@ -641,30 +644,6 @@ void BoardObject::doDataFlowSimulation_serial(const int ticksToSimulate, const b
 	}
 }
 
-void BoardObject::getMembraneCellsChildren(std::vector<Cell *>& outList, const CellType targetCellType /* = CELL_NOTSET */)
-{
-	outList.clear();
-
-	std::vector<Cell*> membraneCells;
-	getMembraneCells(membraneCells);
-
-	for (Cell* memCell : membraneCells)
-	{
-		Cell* childrenList[DIR_COUNT];
-		memCell->fillChildrenList(childrenList);
-
-		// Iterate over its external children and simulate tick to capture the flow out of them since they contains the leaf nodes
-		for (int childIter = 0; childIter < DIR_COUNT; childIter++)
-		{
-			Cell* child = childrenList[childIter];
-			if (child == nullptr || (targetCellType != CELL_NOTSET && child->m_cellType != targetCellType))
-				continue;
-
-			outList.push_back(child);
-		}
-	}
-}
-
 void BoardObject::collectAllNodesFromRoot(const Cell* subtreeRoot, std::vector<Cell *>& outList, const CellType targetCellType /* = CELL_NOTSET */)
 {
 
@@ -680,25 +659,6 @@ void BoardObject::collectAllNodesFromRoot(const Cell* subtreeRoot, std::vector<C
 
 		outList.push_back(child);
 		collectAllNodesFromRoot(child, outList, targetCellType);
-	}
-}
-
-void BoardObject::getMembraneCells(std::vector<Cell*>& membraneCells)
-{
-	std::vector<TablePos> inflexionPoints;
-	getInflexionPointAndConnectMembrane(inflexionPoints, true);
-	for (int inflexionIter = 0; inflexionIter < inflexionPoints.size() - 1; inflexionIter++)
-	{
-		const TablePos& A = inflexionPoints[inflexionIter];
-		const TablePos& B = inflexionPoints[inflexionIter + 1];
-		const TablePos dir = get2DNormDir(A, B);
-
-		// Iterating between all cells inside membrane (along inflexion points)
-		for (TablePos iter = A; iter != B; iter += dir)
-		{
-			Cell* memCell = &m_board[iter.row][iter.col];
-			membraneCells.push_back(memCell);
-		}
 	}
 }
 
@@ -822,112 +782,6 @@ void BoardObject::simulateTick_serial(const bool considerForStatistics /* = true
 #endif
 }
 
-void BoardObject::runGarbageCollector(const float threshold, std::ostream& outStream)
-{
-	// Check the exterior roots (child of membrane) only, since removing subtrees from them would destabilize even more their flow
-	// If a subroot doesn't meet the threshold defined it will be garbed collected
-	std::vector<Cell*> exteriorRoots;
-	getMembraneCellsChildren(exteriorRoots, CELL_EXTERIOR);
-
-	std::vector<Cell*> interiorRoots;
-	getMembraneCellsChildren(interiorRoots, CELL_INTERIOR);
-	const bool noInteriorRoots = interiorRoots.empty();
-
-	// Fill simulation context to decide how much each external leaf will get
-	SimulationContext simContext;
-	fillSimulationContext(simContext);
-
-	for (Cell* root : exteriorRoots)
-	{
-		// Capture first to see what we can get in this moment
-		root->simulateTick_serial(simContext);
-		const float bufferedCap = root->getCurrentBufferedCap();
-
-		root->resetCapacityUsedInSubtree(); // Reset the used capacity
-
-		if (noInteriorRoots || (bufferedCap - root->getCachedEnergyConsumedStat() < threshold))
-		{
-			outStream << "The subtree starting at (" << root->m_row << "," << root->m_column << ") is being garbage collected. Flow: " << bufferedCap << " consumed energy: " << root->getCachedEnergyConsumedStat() << " threshold: " << threshold << std::endl;
-			garbageCollectSubtree(root);
-		}
-	}
-
-	// Update the internal cells info just to be safe for links creation :)
-	updateInternalCellsInfo();
-}
-
-void BoardObject::garbageCollectSubtree(Cell* root)
-{
-	m_garbageCollectedResources[root->m_symbol]++;
-
-	// Iterate over all subtrees and delete the cells and links
-	Cell* childrenList[DIR_COUNT];
-	root->fillChildrenList(childrenList);
-
-	// Garbage collect children
-	for (int childIter = 0; childIter < DIR_COUNT; childIter++)
-	{
-		Cell* child = childrenList[childIter];
-		if (child == nullptr)
-			continue;
-
-		assert(child->m_cellType == CELL_EXTERIOR && "I'm expecting only exterior cells here !!!");
-
-		garbageCollectSubtree(child);
-	}
-
-	// Reset this node too
-	root->reset();
-}
-
-void BoardObject::addPotentialNewCellsAround(std::vector<ResourceAllocatedEval>& validSet, const CellType cellType, const int row, const int col, Cell::UniversalHash2D& hash2D, const std::vector<char>& availableSymbolsToFill) const
-{
-	for (int dirIter = 0; dirIter < DIR_COUNT; dirIter++)
-	{
-		const int potentialRow = Cell::DIR_OFFSET[dirIter].row + row;
-		const int potentialCol = Cell::DIR_OFFSET[dirIter].col + col;
-
-		// Must be on table valid pos, free and not in hash already added
-		// And a single valid neighbor (that is the one it is attached to)
-		if (!isCoordinateValid(potentialRow, potentialCol) ||
-			!m_board[potentialRow][potentialCol].isFree() ||
-			hash2D.isCellSet(potentialRow, potentialCol) ||
-			this->getNumNeighboors(potentialRow, potentialCol) > 1)
-		{
-			continue;
-		}
-
-		// If the parent cell is a membrane cell then the new position must be OUTSIDE membrane
-		if (m_board[row][col].m_cellType == CELL_MEMBRANE && getCellTypeRelativeToMembrane(potentialRow, potentialCol) != cellType)
-			continue;
-
-		// Valid, add it to the set and move further
-		hash2D.setCell(potentialRow, potentialCol);
-
-		// Add for all available symbols, check later if valid
-		for (const char availableSymbol : availableSymbolsToFill)
-		{
-			ResourceAllocatedEval rsc;
-			rsc.pos = TablePos(potentialRow, potentialCol);
-			rsc.symbol = availableSymbol;
-			validSet.emplace_back(rsc);
-		}
-	}
-}
-
-CellType BoardObject::getCellTypeRelativeToMembrane(const int row, const int col) const
-{
-	const bool isInteriorMembraneRow = m_membraneBoundsPerRow[row].first <= col && col <= m_membraneBoundsPerRow[row].second;
-	const bool isInteriorMembraneCol = m_membraneBoundsPerCol[col].first <= row && row <= m_membraneBoundsPerCol[col].second;
-
-	if (isInteriorMembraneCol && isInteriorMembraneRow)
-		return CELL_INTERIOR;
-	if (m_board[row][col].m_cellType == CELL_MEMBRANE)
-		return CELL_MEMBRANE;
-	else
-		return CELL_EXTERIOR;
-}
-
 template <typename T>
 void augmentValue(T& min, T &max, const T value)
 {
@@ -936,532 +790,6 @@ void augmentValue(T& min, T &max, const T value)
 
 	if (max < value)
 		max = value;
-}
-
-// We can't cut columns or row which are edges !
-bool BoardObject::canCutColumn(const int column) const
-{
-	if (m_rootCol == column)
-		return false;
-
-	int numOccupiedItems = 0;
-	for (int i = 0; i < MAX_ROWS; i++)
-	{
-		if (m_membraneBoundsPerRow[i].first == column ||
-			m_membraneBoundsPerRow[i].second == column)
-			return false;
-
-		const Cell& cell = m_board[i][column];
-		if (cell.isFree() == false && cell.m_cellType != CELL_MEMBRANE)
-			return false;
-
-		numOccupiedItems += m_board[i][column].isFree() ? 0 : 1;
-	}
-
-	return numOccupiedItems != 0;
-}
-
-bool BoardObject::canCutRow(const int row) const
-{
-	if (m_rootRow == row)
-		return false;
-
-	int numOccupiedItems = 0;
-	for (int i = 0; i < MAX_COLS; i++)
-	{
-		if (m_membraneBoundsPerCol[i].first == row ||
-			m_membraneBoundsPerCol[i].second == row)
-			return false;
-
-		const Cell& cell = m_board[row][i];
-		if (cell.isFree() == false && cell.m_cellType != CELL_MEMBRANE)
-			return false;
-
-		numOccupiedItems += m_board[row][i].isFree() ? 0 : 1;
-	}
-
-	return numOccupiedItems != 0;
-}
-
-bool BoardObject::evaluateMembraneCut(membraneCutFunctorType func, const DIRECTION dirs[2], const int index, const float baselineFlowAvg, DIRECTION& outDir, float& outFlowDiff) const
-{
-	outFlowDiff = INVALID_FLOW;
-	outDir = DIR_COUNT;
-
-	for (int dirIter = 0; dirIter < 2; dirIter++)
-	{
-		DIRECTION cutDir = dirs[dirIter];
-
-		if (g_verboseBestGatheredSolutions)
-		{
-			(*g_debugLogOutput) << " ---- Index: " << index << " dir: " << Cell::getDirString(cutDir) << std::endl;
-		}
-		
-		// Copy the board and cut the membrane by shifting to the desired direction
-		BoardObject newBoard = *this;
-		(newBoard.*func)(index, cutDir, false);
-
-		// Check if this is complaint with language stuff
-		if (newBoard.isCompliantWithRowColPatterns() == false)
-			continue;
-
-		newBoard.updateBoardAfterSymbolsInit();
-
-		newBoard.expandInternalTrees();
-
-		// Try to add the garbaged items to improve the flow
-		newBoard.expandExternalTrees();
-
-		// Run the simulation on it and get result
-		const float localFlowDiff = newBoard.doDataFlowSimulation_serial_WITHOUT_SIDE_EFFECTS(1) - baselineFlowAvg;
-		if (localFlowDiff > outFlowDiff)
-		{
-			outFlowDiff = localFlowDiff;
-			outDir = cutDir;
-		}
-	}
-
-	return (outDir != DIR_COUNT);	
-}
-
-// Returns true if any valid.
-// Returns row != INVALID_POS for the row to be cut
-// Returns col != INVALID_POS for the col to be cut
-// Returns the flowBenefit of the best between row/col
-bool BoardObject::evaluateMembraneOptimization(int& row, int &col, DIRECTION& dirToCut, float& flowBenefit)
-{
-	row = INVALID_POS;
-	col = INVALID_POS;
-	flowBenefit = INVALID_FLOW;
-
-	float flowBenRow = INVALID_FLOW;
-	float flowBenCol = INVALID_FLOW;
-	DIRECTION dirRow = DIR_COUNT;
-	DIRECTION dirCol = DIR_COUNT;
-
-	// Init the membrane bounds
-	std::vector<Cell*> membraneCells;
-	getMembraneCells(membraneCells);
-	updateMembraneBounds(membraneCells);
-
-	// Obtain the baseline flow of this board
-	const float baselineFlow = doDataFlowSimulation_serial_WITHOUT_SIDE_EFFECTS(1);
-
-	// Check each row, get the best one.
-	{
-		if (g_verboseBestGatheredSolutions)
-		{
-			(*g_debugLogOutput) << " -- Evaluating cutting on ROWS: " << std::endl;
-		}
-
-
-		for (int rowIter = m_membraneBoundsRows.first + 1; rowIter <= m_membraneBoundsRows.second - 1; rowIter++)
-		{
-			if (!canCutRow(rowIter))
-				continue;
-
-			DIRECTION outDir = DIR_COUNT;
-			float outFlowDiff = INVALID_FLOW;
-			const DIRECTION dirsToTry[2] = { DIR_UP, DIR_DOWN };
-			if (evaluateMembraneCut(&BoardObject::cutMembraneByRow, dirsToTry, rowIter, baselineFlow, outDir, outFlowDiff))
-			{
-				if (g_verboseBestGatheredSolutions)
-				{
-					(*g_debugLogOutput) << "----- Eval row " << rowIter << " dir " << Cell::getDirString(outDir) << " - " << outFlowDiff << std::endl;
-				}
-
-				if (outFlowDiff > flowBenRow)
-				{
-					flowBenRow = outFlowDiff;
-					row = rowIter;
-					dirRow = outDir;
-				}
-			}
-		}
-	}
-
-	// Check each col, get the best one
-	{
-		if (g_verboseBestGatheredSolutions)
-		{
-			(*g_debugLogOutput) << " -- Evaluating cutting on COLUMNS: " << std::endl;
-		}
-
-
-		for (int colIter = m_membraneBoundsCols.first + 1; colIter <= m_membraneBoundsCols.second - 1; colIter++)
-		{
-			if (!canCutColumn(colIter))
-				continue;
-
-			DIRECTION outDir = DIR_COUNT;
-			float outFlowDiff = INVALID_FLOW;
-			const DIRECTION dirsToTry[2] = { DIR_LEFT, DIR_RIGHT };
-			if (evaluateMembraneCut(&BoardObject::cutMembraneByCol, dirsToTry, colIter, baselineFlow, outDir, outFlowDiff))
-			{
-				if (g_verboseBestGatheredSolutions)
-				{
-					(*g_debugLogOutput) << "----- Eval col " << colIter << " dir " << Cell::getDirString(outDir) << " - " << outFlowDiff << std::endl;
-				}
-
-				if (outFlowDiff > flowBenCol)
-				{
-					flowBenCol = outFlowDiff;
-					col = colIter;
-					dirCol = outDir;
-				}
-			}
-		}
-	}
-
-	// Compare and output only the best result
-	if (row == INVALID_POS && col == INVALID_POS)
-	{
-		return false;
-	}
-	else if (row == INVALID_POS && col != INVALID_POS)
-	{
-		flowBenefit = flowBenCol;
-		dirToCut = dirCol;
-		return true;
-	}
-	else if (row != INVALID_POS && col == INVALID_POS)
-	{
-		flowBenefit = flowBenRow;
-		dirToCut = dirRow;
-		return true;
-	}
-	else
-	{
-		if (flowBenRow > flowBenCol)
-		{
-			flowBenefit = flowBenRow;
-			dirToCut = dirRow;
-			col = INVALID_POS;
-		}
-		else
-		{
-			flowBenefit = flowBenCol;
-			dirToCut = dirCol;
-			row = INVALID_POS;
-		}
-
-		return true;
-	}
-
-	return false;
-}
-
-
-void BoardObject::updateMembraneBounds(std::vector<Cell*>& membraneCells)
-{
-	auto invalidMinMaxCol = std::make_pair(MAX_COLS + 1, -1);
-	// Init min / max first
-	for (int i = 0; i < MAX_ROWS; i++)
-	{
-		m_membraneBoundsPerRow[i] = invalidMinMaxCol;
-	}
-
-	auto invalidMinMaxRow = std::make_pair(MAX_ROWS + 1, -1);
-	for (int i = 0; i < MAX_COLS; i++)
-	{
-		m_membraneBoundsPerCol[i] = invalidMinMaxRow;
-	}
-
-	for (const Cell* cell : membraneCells)
-	{
-		const int row = cell->m_row;
-		const int col = cell->m_column;
-
-		augmentValue(m_membraneBoundsPerRow[row].first, m_membraneBoundsPerRow[row].second, col);
-		augmentValue(m_membraneBoundsPerCol[col].first, m_membraneBoundsPerCol[col].second, row);
-
-		augmentValue(m_membraneBoundsCols.first, m_membraneBoundsCols.second, col);
-		augmentValue(m_membraneBoundsRows.first, m_membraneBoundsRows.second, row);
-	}
-}
-
-// Expands the external trees to improve overall flow
-void BoardObject::expandExternalTrees()
-{
-	std::vector<Cell*> membraneCells;
-	getMembraneCells(membraneCells);
-
-	updateMembraneBounds(membraneCells);
-
-
-	// Step 1: collect all nodes starting from membrane nodes and exterior subtrees
-	std::vector<std::pair<Cell*, std::vector<Cell*>>> occupiedCellsList; // occupiedCellList[M] = list => the subtree nodes below membrane node M
-	for (Cell* memCell : membraneCells)
-	{
-		std::vector<Cell*> occupiedCellsBelowMemCell;
-		occupiedCellsBelowMemCell.push_back(memCell); // Add the membrane cell too 
-		collectAllNodesFromRoot(memCell, occupiedCellsBelowMemCell, CELL_EXTERIOR);
-		occupiedCellsList.emplace_back(std::make_pair(memCell, occupiedCellsBelowMemCell));
-	}
-
-	// Step 2: identify all available positions near the positions at Step 1 - valid are positions inside table which have a SINGLE valid neighbor on table
-	// Let this set be ValidSet
-	Cell::UniversalHash2D hash2D;
-
-
-	// Fill the list of different symbols that can be used (the ones garbage collected)
-	std::vector<char> availableSymbolsToFill;
-	for (auto& entry : m_garbageCollectedResources)
-	{
-		if (entry.second > 0)
-			availableSymbolsToFill.push_back(entry.first);
-	}
-
-	std::vector<ResourceAllocatedEval> validSet;
-	for (std::pair<Cell*, std::vector<Cell*>>& cellsBelowParent : occupiedCellsList)
-	{
-		Cell* parent = cellsBelowParent.first;
-		const std::vector<Cell*>& cellsList = cellsBelowParent.second;
-
-		for (const Cell* cell: cellsList)
-		{
-			const int row = cell->m_row;
-			const int column = cell->m_column;
-
-			addPotentialNewCellsAround(validSet, CELL_EXTERIOR, row, column, hash2D, availableSymbolsToFill);
-		}
-	}
-
-	if (false)
-	{
-		printBoard(std::cout);
-	}
-
-	float baselineCurrentFlow = doDataFlowSimulation_serial_WITHOUT_SIDE_EFFECTS(1);
-
-	do {
-		int argmax = -1;
-		float bestFlowBenefit = INVALID_FLOW;
-
-		// Step 3: for each such position compute the improvements added if we put something there. Continue moving in the most promising direction.
-		// Update ValidSet after each new position added.
-		for (int targetsIter = 0; targetsIter < validSet.size(); targetsIter++)
-		{
-			ResourceAllocatedEval& resourceEval = validSet[targetsIter];
-			resourceEval.flowBenefit = INVALID_FLOW;
-
-			// If we don't have remaining symbols of this type, don't do anything
-			if (m_garbageCollectedResources[resourceEval.symbol] == 0)
-			{
-				continue;
-			}
-
-			// Copy board, apply the symbol, check if valid then compute the avg flow for one tick to decide		
-			BoardObject* newBoard = new BoardObject();
-			*newBoard = *this;
-
-			const int targetRow = resourceEval.pos.row;
-			const int targetCol = resourceEval.pos.col;
-
-			// Apply symbol and set links to neighbors
-			newBoard->setNewCell(targetRow, targetCol, resourceEval.symbol, CELL_EXTERIOR, false);
-
-			if (newBoard->isCompliantWithRowColPatterns(targetRow, targetCol) == false)
-			{
-				delete newBoard;
-				continue;
-			}
-
-			newBoard->doDataFlowSimulation_serial(1, false);
-			const float flowRes = newBoard->getLastSimulationAvgDataFlowPerUnit();
-			resourceEval.flowBenefit = flowRes - baselineCurrentFlow;
-
-			if (g_verboseLocalSolutions)
-			{
-				(*g_debugLogOutput) << " -------- Expand external tree on Pos (" << targetRow << "," << targetCol << ")" << " Sym: " << resourceEval.symbol <<" Benefit: " << resourceEval.flowBenefit << std::endl;
-			}
-
-			if (resourceEval.flowBenefit > 0.0f && resourceEval.flowBenefit > bestFlowBenefit)
-			{
-				bestFlowBenefit = resourceEval.flowBenefit;
-				argmax = targetsIter;
-			}
-
-			delete newBoard;
-		}
-
-		// TODO: verbose argmax !!
-		if (bestFlowBenefit > 0.0f && argmax > 0)
-		{
-			// Set this symbol on board
-			const ResourceAllocatedEval& rsc = validSet[argmax];
-			Cell& newAddedCell = m_board[rsc.pos.row][rsc.pos.col];
-			this->setNewCell(rsc.pos.row, rsc.pos.col, rsc.symbol, CELL_EXTERIOR, true); // Definitive this time !
-
-			if (g_verboseBestGatheredSolutions)
-			{
-				(*g_debugLogOutput) <<" ------- ExpandExternalTree Best Pos: (" << rsc.pos.row << "," << rsc.pos.col << ")" << " Sym: " << rsc.symbol << " Benefit: " << bestFlowBenefit << std::endl;
-			}
-
-			// Consume the symbol committed from the map
-			assert(m_garbageCollectedResources[rsc.symbol] > 0);
-			m_garbageCollectedResources[rsc.symbol]--;
-
-			// Update the potential list of positions
-			addPotentialNewCellsAround(validSet, CELL_EXTERIOR, rsc.pos.row, rsc.pos.col, hash2D, availableSymbolsToFill);
-
-			// Move on to select another one !
-
-			// Update first the base flow value
-			baselineCurrentFlow += bestFlowBenefit;
-		}
-		else
-		{
-			// No more moves, exit !
-			break;
-		}
-
-	} while (true);
-}
-
-void BoardObject::expandInternalTrees()
-{
-	// IDEA: collect all potential nodes around membrane nodes or existing internal nodes that are NOT LEAF and extend them with something that would be a leaf
-	// to have more leafs and collect more flow
-
-	const float baselineCurrentFlow = doDataFlowSimulation_serial_WITHOUT_SIDE_EFFECTS(1);
-
-	// Try this until adding a new leaf does not further increase the flow
-	while (true)
-	{
-		std::vector<Cell*> interiorRoots;
-		getMembraneCellsChildren(interiorRoots, CELL_INTERIOR);
-		const bool noInteriorRoots = interiorRoots.empty();
-
-		// PART 1: collect potential locations
-		//-------------------------------------------------------
-		std::vector<Cell*> membraneCells;
-		getMembraneCells(membraneCells);
-
-		updateMembraneBounds(membraneCells);
-
-		// Step 1: collect all nodes starting from membrane nodes and exterior subtrees
-		std::vector<std::pair<Cell*, std::vector<Cell*>>> occupiedCellsList; // occupiedCellList[M] = list => the subtree nodes below membrane node M
-		for (Cell* memCell : membraneCells)
-		{
-			std::vector<Cell*> occupiedCellsBelowMemCell;
-			occupiedCellsBelowMemCell.push_back(memCell); // Add the membrane cell too 
-			collectAllNodesFromRoot(memCell, occupiedCellsBelowMemCell, CELL_INTERIOR);
-			occupiedCellsList.emplace_back(std::make_pair(memCell, occupiedCellsBelowMemCell));
-		}
-
-		// Step 2: identify all available positions near the positions at Step 1 - valid are positions inside table which have a SINGLE valid neighbor on table
-		// Let this set be ValidSet
-		Cell::UniversalHash2D hash2D;
-
-		// Fill the list of different symbols that can be used (the ones garbage collected)
-		std::vector<char> availableSymbolsToFill;
-		for (auto& entry : m_garbageCollectedResources)
-		{
-			if (entry.second > 0)
-				availableSymbolsToFill.push_back(entry.first);
-		}
-
-		std::vector<ResourceAllocatedEval> validSet;
-		for (std::pair<Cell*, std::vector<Cell*>>& cellsBelowParent : occupiedCellsList)
-		{
-			Cell* parent = cellsBelowParent.first;
-			const std::vector<Cell*>& cellsList = cellsBelowParent.second;
-
-			for (const Cell* cell : cellsList)
-			{
-				const int row = cell->m_row;
-				const int column = cell->m_column;
-
-				// Do not add cells around leafs !!
-				if (cell->isInteriorLeaf())
-					continue;
-
-				addPotentialNewCellsAround(validSet, CELL_INTERIOR, row, column, hash2D, availableSymbolsToFill);
-			}
-		}
-
-		// Part 2: try each potential cell and get the best one
-		int argmax = -1;
-		float bestFlowBenefit = INVALID_FLOW;
-
-		// Step 3: for each such position compute the improvements added if we put something there. Continue moving in the most promising direction.
-		// Update ValidSet after each new position added.
-		for (int targetsIter = 0; targetsIter < validSet.size(); targetsIter++)
-		{
-			ResourceAllocatedEval& resourceEval = validSet[targetsIter];
-			resourceEval.flowBenefit = INVALID_FLOW;
-
-			// If we don't have remaining symbols of this type, don't do anything
-			if (m_garbageCollectedResources[resourceEval.symbol] == 0)
-			{
-				continue;
-			}
-
-			// Copy board, apply the symbol, check if valid then compute the avg flow for one tick to decide		
-			BoardObject* newBoard = new BoardObject();
-			*newBoard = *this;
-
-			const int targetRow = resourceEval.pos.row;
-			const int targetCol = resourceEval.pos.col;
-
-			// Apply symbol and set links to neighbors
-			newBoard->setNewCell(targetRow, targetCol, resourceEval.symbol, CELL_INTERIOR, false);
-
-			if (newBoard->isCompliantWithRowColPatterns(targetRow, targetCol) == false)
-			{
-				delete newBoard;
-				continue;
-			}
-
-			newBoard->doDataFlowSimulation_serial(1, false);
-			const float flowRes = newBoard->getLastSimulationAvgDataFlowPerUnit();
-			resourceEval.flowBenefit = flowRes - baselineCurrentFlow;
-
-			if (g_verboseLocalSolutions)
-			{
-				(*g_debugLogOutput) << " -------- Expand external tree on Pos (" << targetRow << "," << targetCol << ")" << " Sym: " << resourceEval.symbol << " Benefit: " << resourceEval.flowBenefit << std::endl;
-			}
-
-			const bool isFlowBetter = (resourceEval.flowBenefit > 0.0f && resourceEval.flowBenefit > bestFlowBenefit);
-			if (noInteriorRoots || isFlowBetter)
-			{
-				bestFlowBenefit = resourceEval.flowBenefit;
-				argmax = targetsIter;
-
-				if (!isFlowBetter)
-				{
-					// Don't evaluate others..continue just
-					break;
-				}
-			}
-
-			delete newBoard;
-		}
-
-		// TODO: verbose argmax !!
-		if ((bestFlowBenefit > 0.0f || noInteriorRoots) && argmax > 0)
-		{
-			// Set this symbol on board
-			const ResourceAllocatedEval& rsc = validSet[argmax];
-			Cell& newAddedCell = m_board[rsc.pos.row][rsc.pos.col];
-			this->setNewCell(rsc.pos.row, rsc.pos.col, rsc.symbol, CELL_INTERIOR, true); // Definitive this time !
-
-			if (g_verboseBestGatheredSolutions)
-			{
-				(*g_debugLogOutput) << " ------- ExpandInternalTree Best Pos: (" << rsc.pos.row << "," << rsc.pos.col << ")" << " Sym: " << rsc.symbol << " Benefit: " << bestFlowBenefit << std::endl;
-			}
-
-			// Consume the symbol committed from the map
-			assert(m_garbageCollectedResources[rsc.symbol] > 0);
-			m_garbageCollectedResources[rsc.symbol]--;
-		}
-		else
-		{
-			// No more moves, exit !
-			break;
-		}
-	}
 }
 
 void BoardObject::setNewCell(const int targetRow, const int targetCol, const char symbol, const CellType cellType, const bool definitive)
@@ -2022,8 +1350,8 @@ bool BoardObject::internalPropagateSourceEvent(const Cell::BroadcastEventType sr
 		}
 	}
 #else
-	childResuls &= internalPropagateSourceEvent(srcEventType, cell->m_left, prev, tablePos, source, allSources, depth + 1);
-	childResuls &= internalPropagateSourceEvent(srcEventType, cell->m_right, prev, tablePos, source, allSources, depth + 1);
+	childResuls &= internalPropagateSourceEvent(srcEventType, cell->m_left, tablePos, source, allSources, depth + 1);
+	childResuls &= internalPropagateSourceEvent(srcEventType, cell->m_right, tablePos, source, allSources, depth + 1);
 #endif
 
 	bool resThis = false;
@@ -2590,6 +1918,687 @@ void BoardObject::generateDirectionalBoardModel(
 	// Updates the links
 	updateInternalCellsInfo();
 }
+
+
+// We can't cut columns or row which are edges !
+bool BoardObject::canCutColumn(const int column) const
+{
+	if (m_rootCol == column)
+		return false;
+
+	int numOccupiedItems = 0;
+	for (int i = 0; i < MAX_ROWS; i++)
+	{
+		if (m_membraneBoundsPerRow[i].first == column ||
+			m_membraneBoundsPerRow[i].second == column)
+			return false;
+
+		const Cell& cell = m_board[i][column];
+		if (cell.isFree() == false && cell.m_cellType != CELL_MEMBRANE)
+			return false;
+
+		numOccupiedItems += m_board[i][column].isFree() ? 0 : 1;
+	}
+
+	return numOccupiedItems != 0;
+}
+
+bool BoardObject::canCutRow(const int row) const
+{
+	if (m_rootRow == row)
+		return false;
+
+	int numOccupiedItems = 0;
+	for (int i = 0; i < MAX_COLS; i++)
+	{
+		if (m_membraneBoundsPerCol[i].first == row ||
+			m_membraneBoundsPerCol[i].second == row)
+			return false;
+
+		const Cell& cell = m_board[row][i];
+		if (cell.isFree() == false && cell.m_cellType != CELL_MEMBRANE)
+			return false;
+
+		numOccupiedItems += m_board[row][i].isFree() ? 0 : 1;
+	}
+
+	return numOccupiedItems != 0;
+}
+
+bool BoardObject::evaluateMembraneCut(membraneCutFunctorType func, const DIRECTION dirs[2], const int index, const float baselineFlowAvg, DIRECTION& outDir, float& outFlowDiff) const
+{
+	outFlowDiff = INVALID_FLOW;
+	outDir = DIR_COUNT;
+
+	for (int dirIter = 0; dirIter < 2; dirIter++)
+	{
+		DIRECTION cutDir = dirs[dirIter];
+
+		if (g_verboseBestGatheredSolutions)
+		{
+			(*g_debugLogOutput) << " ---- Index: " << index << " dir: " << Cell::getDirString(cutDir) << std::endl;
+		}
+
+		// Copy the board and cut the membrane by shifting to the desired direction
+		BoardObject newBoard = *this;
+		(newBoard.*func)(index, cutDir, false);
+
+		// Check if this is complaint with language stuff
+		if (newBoard.isCompliantWithRowColPatterns() == false)
+			continue;
+
+		newBoard.updateBoardAfterSymbolsInit();
+
+		newBoard.expandInternalTrees();
+
+		// Try to add the garbaged items to improve the flow
+		newBoard.expandExternalTrees();
+
+		// Run the simulation on it and get result
+		const float localFlowDiff = newBoard.doDataFlowSimulation_serial_WITHOUT_SIDE_EFFECTS(1) - baselineFlowAvg;
+		if (localFlowDiff > outFlowDiff)
+		{
+			outFlowDiff = localFlowDiff;
+			outDir = cutDir;
+		}
+	}
+
+	return (outDir != DIR_COUNT);
+}
+
+// Returns true if any valid.
+// Returns row != INVALID_POS for the row to be cut
+// Returns col != INVALID_POS for the col to be cut
+// Returns the flowBenefit of the best between row/col
+bool BoardObject::evaluateMembraneOptimization(int& row, int &col, DIRECTION& dirToCut, float& flowBenefit)
+{
+	row = INVALID_POS;
+	col = INVALID_POS;
+	flowBenefit = INVALID_FLOW;
+
+	float flowBenRow = INVALID_FLOW;
+	float flowBenCol = INVALID_FLOW;
+	DIRECTION dirRow = DIR_COUNT;
+	DIRECTION dirCol = DIR_COUNT;
+
+	// Init the membrane bounds
+	std::vector<Cell*> membraneCells;
+	getMembraneCells(membraneCells);
+	updateMembraneBounds(membraneCells);
+
+	// Obtain the baseline flow of this board
+	const float baselineFlow = doDataFlowSimulation_serial_WITHOUT_SIDE_EFFECTS(1);
+
+	// Check each row, get the best one.
+	{
+		if (g_verboseBestGatheredSolutions)
+		{
+			(*g_debugLogOutput) << " -- Evaluating cutting on ROWS: " << std::endl;
+		}
+
+
+		for (int rowIter = m_membraneBoundsRows.first + 1; rowIter <= m_membraneBoundsRows.second - 1; rowIter++)
+		{
+			if (!canCutRow(rowIter))
+				continue;
+
+			DIRECTION outDir = DIR_COUNT;
+			float outFlowDiff = INVALID_FLOW;
+			const DIRECTION dirsToTry[2] = { DIR_UP, DIR_DOWN };
+			if (evaluateMembraneCut(&BoardObject::cutMembraneByRow, dirsToTry, rowIter, baselineFlow, outDir, outFlowDiff))
+			{
+				if (g_verboseBestGatheredSolutions)
+				{
+					(*g_debugLogOutput) << "----- Eval row " << rowIter << " dir " << Cell::getDirString(outDir) << " - " << outFlowDiff << std::endl;
+				}
+
+				if (outFlowDiff > flowBenRow)
+				{
+					flowBenRow = outFlowDiff;
+					row = rowIter;
+					dirRow = outDir;
+				}
+			}
+		}
+	}
+
+	// Check each col, get the best one
+	{
+		if (g_verboseBestGatheredSolutions)
+		{
+			(*g_debugLogOutput) << " -- Evaluating cutting on COLUMNS: " << std::endl;
+		}
+
+
+		for (int colIter = m_membraneBoundsCols.first + 1; colIter <= m_membraneBoundsCols.second - 1; colIter++)
+		{
+			if (!canCutColumn(colIter))
+				continue;
+
+			DIRECTION outDir = DIR_COUNT;
+			float outFlowDiff = INVALID_FLOW;
+			const DIRECTION dirsToTry[2] = { DIR_LEFT, DIR_RIGHT };
+			if (evaluateMembraneCut(&BoardObject::cutMembraneByCol, dirsToTry, colIter, baselineFlow, outDir, outFlowDiff))
+			{
+				if (g_verboseBestGatheredSolutions)
+				{
+					(*g_debugLogOutput) << "----- Eval col " << colIter << " dir " << Cell::getDirString(outDir) << " - " << outFlowDiff << std::endl;
+				}
+
+				if (outFlowDiff > flowBenCol)
+				{
+					flowBenCol = outFlowDiff;
+					col = colIter;
+					dirCol = outDir;
+				}
+			}
+		}
+	}
+
+	// Compare and output only the best result
+	if (row == INVALID_POS && col == INVALID_POS)
+	{
+		return false;
+	}
+	else if (row == INVALID_POS && col != INVALID_POS)
+	{
+		flowBenefit = flowBenCol;
+		dirToCut = dirCol;
+		return true;
+	}
+	else if (row != INVALID_POS && col == INVALID_POS)
+	{
+		flowBenefit = flowBenRow;
+		dirToCut = dirRow;
+		return true;
+	}
+	else
+	{
+		if (flowBenRow > flowBenCol)
+		{
+			flowBenefit = flowBenRow;
+			dirToCut = dirRow;
+			col = INVALID_POS;
+		}
+		else
+		{
+			flowBenefit = flowBenCol;
+			dirToCut = dirCol;
+			row = INVALID_POS;
+		}
+
+		return true;
+	}
+
+	return false;
+}
+
+
+void BoardObject::updateMembraneBounds(std::vector<Cell*>& membraneCells)
+{
+	auto invalidMinMaxCol = std::make_pair(MAX_COLS + 1, -1);
+	// Init min / max first
+	for (int i = 0; i < MAX_ROWS; i++)
+	{
+		m_membraneBoundsPerRow[i] = invalidMinMaxCol;
+	}
+
+	auto invalidMinMaxRow = std::make_pair(MAX_ROWS + 1, -1);
+	for (int i = 0; i < MAX_COLS; i++)
+	{
+		m_membraneBoundsPerCol[i] = invalidMinMaxRow;
+	}
+
+	for (const Cell* cell : membraneCells)
+	{
+		const int row = cell->m_row;
+		const int col = cell->m_column;
+
+		augmentValue(m_membraneBoundsPerRow[row].first, m_membraneBoundsPerRow[row].second, col);
+		augmentValue(m_membraneBoundsPerCol[col].first, m_membraneBoundsPerCol[col].second, row);
+
+		augmentValue(m_membraneBoundsCols.first, m_membraneBoundsCols.second, col);
+		augmentValue(m_membraneBoundsRows.first, m_membraneBoundsRows.second, row);
+	}
+}
+
+// Expands the external trees to improve overall flow
+void BoardObject::expandExternalTrees()
+{
+	std::vector<Cell*> membraneCells;
+	getMembraneCells(membraneCells);
+
+	updateMembraneBounds(membraneCells);
+
+
+	// Step 1: collect all nodes starting from membrane nodes and exterior subtrees
+	std::vector<std::pair<Cell*, std::vector<Cell*>>> occupiedCellsList; // occupiedCellList[M] = list => the subtree nodes below membrane node M
+	for (Cell* memCell : membraneCells)
+	{
+		std::vector<Cell*> occupiedCellsBelowMemCell;
+		occupiedCellsBelowMemCell.push_back(memCell); // Add the membrane cell too 
+		collectAllNodesFromRoot(memCell, occupiedCellsBelowMemCell, CELL_EXTERIOR);
+		occupiedCellsList.emplace_back(std::make_pair(memCell, occupiedCellsBelowMemCell));
+	}
+
+	// Step 2: identify all available positions near the positions at Step 1 - valid are positions inside table which have a SINGLE valid neighbor on table
+	// Let this set be ValidSet
+	Cell::UniversalHash2D hash2D;
+
+
+	// Fill the list of different symbols that can be used (the ones garbage collected)
+	std::vector<char> availableSymbolsToFill;
+	for (auto& entry : m_garbageCollectedResources)
+	{
+		if (entry.second > 0)
+			availableSymbolsToFill.push_back(entry.first);
+	}
+
+	std::vector<ResourceAllocatedEval> validSet;
+	for (std::pair<Cell*, std::vector<Cell*>>& cellsBelowParent : occupiedCellsList)
+	{
+		Cell* parent = cellsBelowParent.first;
+		const std::vector<Cell*>& cellsList = cellsBelowParent.second;
+
+		for (const Cell* cell : cellsList)
+		{
+			const int row = cell->m_row;
+			const int column = cell->m_column;
+
+			addPotentialNewCellsAround(validSet, CELL_EXTERIOR, row, column, hash2D, availableSymbolsToFill);
+		}
+	}
+
+	if (false)
+	{
+		printBoard(std::cout);
+	}
+
+	float baselineCurrentFlow = doDataFlowSimulation_serial_WITHOUT_SIDE_EFFECTS(1);
+
+	do {
+		int argmax = -1;
+		float bestFlowBenefit = INVALID_FLOW;
+
+		// Step 3: for each such position compute the improvements added if we put something there. Continue moving in the most promising direction.
+		// Update ValidSet after each new position added.
+		for (int targetsIter = 0; targetsIter < validSet.size(); targetsIter++)
+		{
+			ResourceAllocatedEval& resourceEval = validSet[targetsIter];
+			resourceEval.flowBenefit = INVALID_FLOW;
+
+			// If we don't have remaining symbols of this type, don't do anything
+			if (m_garbageCollectedResources[resourceEval.symbol] == 0)
+			{
+				continue;
+			}
+
+			// Copy board, apply the symbol, check if valid then compute the avg flow for one tick to decide		
+			BoardObject* newBoard = new BoardObject();
+			*newBoard = *this;
+
+			const int targetRow = resourceEval.pos.row;
+			const int targetCol = resourceEval.pos.col;
+
+			// Apply symbol and set links to neighbors
+			newBoard->setNewCell(targetRow, targetCol, resourceEval.symbol, CELL_EXTERIOR, false);
+
+			if (newBoard->isCompliantWithRowColPatterns(targetRow, targetCol) == false)
+			{
+				delete newBoard;
+				continue;
+			}
+
+			newBoard->doDataFlowSimulation_serial(1, false);
+			const float flowRes = newBoard->getLastSimulationAvgDataFlowPerUnit();
+			resourceEval.flowBenefit = flowRes - baselineCurrentFlow;
+
+			if (g_verboseLocalSolutions)
+			{
+				(*g_debugLogOutput) << " -------- Expand external tree on Pos (" << targetRow << "," << targetCol << ")" << " Sym: " << resourceEval.symbol << " Benefit: " << resourceEval.flowBenefit << std::endl;
+			}
+
+			if (resourceEval.flowBenefit > 0.0f && resourceEval.flowBenefit > bestFlowBenefit)
+			{
+				bestFlowBenefit = resourceEval.flowBenefit;
+				argmax = targetsIter;
+			}
+
+			delete newBoard;
+		}
+
+		// TODO: verbose argmax !!
+		if (bestFlowBenefit > 0.0f && argmax > 0)
+		{
+			// Set this symbol on board
+			const ResourceAllocatedEval& rsc = validSet[argmax];
+			Cell& newAddedCell = m_board[rsc.pos.row][rsc.pos.col];
+			this->setNewCell(rsc.pos.row, rsc.pos.col, rsc.symbol, CELL_EXTERIOR, true); // Definitive this time !
+
+			if (g_verboseBestGatheredSolutions)
+			{
+				(*g_debugLogOutput) << " ------- ExpandExternalTree Best Pos: (" << rsc.pos.row << "," << rsc.pos.col << ")" << " Sym: " << rsc.symbol << " Benefit: " << bestFlowBenefit << std::endl;
+			}
+
+			// Consume the symbol committed from the map
+			assert(m_garbageCollectedResources[rsc.symbol] > 0);
+			m_garbageCollectedResources[rsc.symbol]--;
+
+			// Update the potential list of positions
+			addPotentialNewCellsAround(validSet, CELL_EXTERIOR, rsc.pos.row, rsc.pos.col, hash2D, availableSymbolsToFill);
+
+			// Move on to select another one !
+
+			// Update first the base flow value
+			baselineCurrentFlow += bestFlowBenefit;
+		}
+		else
+		{
+			// No more moves, exit !
+			break;
+		}
+
+	} while (true);
+}
+
+void BoardObject::expandInternalTrees()
+{
+	// IDEA: collect all potential nodes around membrane nodes or existing internal nodes that are NOT LEAF and extend them with something that would be a leaf
+	// to have more leafs and collect more flow
+
+	const float baselineCurrentFlow = doDataFlowSimulation_serial_WITHOUT_SIDE_EFFECTS(1);
+
+	// Try this until adding a new leaf does not further increase the flow
+	while (true)
+	{
+		std::vector<Cell*> interiorRoots;
+		getMembraneCellsChildren(interiorRoots, CELL_INTERIOR);
+		const bool noInteriorRoots = interiorRoots.empty();
+
+		// PART 1: collect potential locations
+		//-------------------------------------------------------
+		std::vector<Cell*> membraneCells;
+		getMembraneCells(membraneCells);
+
+		updateMembraneBounds(membraneCells);
+
+		// Step 1: collect all nodes starting from membrane nodes and exterior subtrees
+		std::vector<std::pair<Cell*, std::vector<Cell*>>> occupiedCellsList; // occupiedCellList[M] = list => the subtree nodes below membrane node M
+		for (Cell* memCell : membraneCells)
+		{
+			std::vector<Cell*> occupiedCellsBelowMemCell;
+			occupiedCellsBelowMemCell.push_back(memCell); // Add the membrane cell too 
+			collectAllNodesFromRoot(memCell, occupiedCellsBelowMemCell, CELL_INTERIOR);
+			occupiedCellsList.emplace_back(std::make_pair(memCell, occupiedCellsBelowMemCell));
+		}
+
+		// Step 2: identify all available positions near the positions at Step 1 - valid are positions inside table which have a SINGLE valid neighbor on table
+		// Let this set be ValidSet
+		Cell::UniversalHash2D hash2D;
+
+		// Fill the list of different symbols that can be used (the ones garbage collected)
+		std::vector<char> availableSymbolsToFill;
+		for (auto& entry : m_garbageCollectedResources)
+		{
+			if (entry.second > 0)
+				availableSymbolsToFill.push_back(entry.first);
+		}
+
+		std::vector<ResourceAllocatedEval> validSet;
+		for (std::pair<Cell*, std::vector<Cell*>>& cellsBelowParent : occupiedCellsList)
+		{
+			Cell* parent = cellsBelowParent.first;
+			const std::vector<Cell*>& cellsList = cellsBelowParent.second;
+
+			for (const Cell* cell : cellsList)
+			{
+				const int row = cell->m_row;
+				const int column = cell->m_column;
+
+				// Do not add cells around leafs !!
+				if (cell->isInteriorLeaf())
+					continue;
+
+				addPotentialNewCellsAround(validSet, CELL_INTERIOR, row, column, hash2D, availableSymbolsToFill);
+			}
+		}
+
+		// Part 2: try each potential cell and get the best one
+		int argmax = -1;
+		float bestFlowBenefit = INVALID_FLOW;
+
+		// Step 3: for each such position compute the improvements added if we put something there. Continue moving in the most promising direction.
+		// Update ValidSet after each new position added.
+		for (int targetsIter = 0; targetsIter < validSet.size(); targetsIter++)
+		{
+			ResourceAllocatedEval& resourceEval = validSet[targetsIter];
+			resourceEval.flowBenefit = INVALID_FLOW;
+
+			// If we don't have remaining symbols of this type, don't do anything
+			if (m_garbageCollectedResources[resourceEval.symbol] == 0)
+			{
+				continue;
+			}
+
+			// Copy board, apply the symbol, check if valid then compute the avg flow for one tick to decide		
+			BoardObject* newBoard = new BoardObject();
+			*newBoard = *this;
+
+			const int targetRow = resourceEval.pos.row;
+			const int targetCol = resourceEval.pos.col;
+
+			// Apply symbol and set links to neighbors
+			newBoard->setNewCell(targetRow, targetCol, resourceEval.symbol, CELL_INTERIOR, false);
+
+			if (newBoard->isCompliantWithRowColPatterns(targetRow, targetCol) == false)
+			{
+				delete newBoard;
+				continue;
+			}
+
+			newBoard->doDataFlowSimulation_serial(1, false);
+			const float flowRes = newBoard->getLastSimulationAvgDataFlowPerUnit();
+			resourceEval.flowBenefit = flowRes - baselineCurrentFlow;
+
+			if (g_verboseLocalSolutions)
+			{
+				(*g_debugLogOutput) << " -------- Expand external tree on Pos (" << targetRow << "," << targetCol << ")" << " Sym: " << resourceEval.symbol << " Benefit: " << resourceEval.flowBenefit << std::endl;
+			}
+
+			const bool isFlowBetter = (resourceEval.flowBenefit > 0.0f && resourceEval.flowBenefit > bestFlowBenefit);
+			if (noInteriorRoots || isFlowBetter)
+			{
+				bestFlowBenefit = resourceEval.flowBenefit;
+				argmax = targetsIter;
+
+				if (!isFlowBetter)
+				{
+					// Don't evaluate others..continue just
+					break;
+				}
+			}
+
+			delete newBoard;
+		}
+
+		// TODO: verbose argmax !!
+		if ((bestFlowBenefit > 0.0f || noInteriorRoots) && argmax > 0)
+		{
+			// Set this symbol on board
+			const ResourceAllocatedEval& rsc = validSet[argmax];
+			Cell& newAddedCell = m_board[rsc.pos.row][rsc.pos.col];
+			this->setNewCell(rsc.pos.row, rsc.pos.col, rsc.symbol, CELL_INTERIOR, true); // Definitive this time !
+
+			if (g_verboseBestGatheredSolutions)
+			{
+				(*g_debugLogOutput) << " ------- ExpandInternalTree Best Pos: (" << rsc.pos.row << "," << rsc.pos.col << ")" << " Sym: " << rsc.symbol << " Benefit: " << bestFlowBenefit << std::endl;
+			}
+
+			// Consume the symbol committed from the map
+			assert(m_garbageCollectedResources[rsc.symbol] > 0);
+			m_garbageCollectedResources[rsc.symbol]--;
+		}
+		else
+		{
+			// No more moves, exit !
+			break;
+		}
+	}
+}
+
+
+void BoardObject::getMembraneCells(std::vector<Cell*>& membraneCells)
+{
+	std::vector<TablePos> inflexionPoints;
+	getInflexionPointAndConnectMembrane(inflexionPoints, true);
+	for (int inflexionIter = 0; inflexionIter < inflexionPoints.size() - 1; inflexionIter++)
+	{
+		const TablePos& A = inflexionPoints[inflexionIter];
+		const TablePos& B = inflexionPoints[inflexionIter + 1];
+		const TablePos dir = get2DNormDir(A, B);
+
+		// Iterating between all cells inside membrane (along inflexion points)
+		for (TablePos iter = A; iter != B; iter += dir)
+		{
+			Cell* memCell = &m_board[iter.row][iter.col];
+			membraneCells.push_back(memCell);
+		}
+	}
+}
+
+
+void BoardObject::runGarbageCollector(const float threshold, std::ostream& outStream)
+{
+	// Check the exterior roots (child of membrane) only, since removing subtrees from them would destabilize even more their flow
+	// If a subroot doesn't meet the threshold defined it will be garbed collected
+	std::vector<Cell*> exteriorRoots;
+	getMembraneCellsChildren(exteriorRoots, CELL_EXTERIOR);
+
+	std::vector<Cell*> interiorRoots;
+	getMembraneCellsChildren(interiorRoots, CELL_INTERIOR);
+	const bool noInteriorRoots = interiorRoots.empty();
+
+	// Fill simulation context to decide how much each external leaf will get
+	SimulationContext simContext;
+	fillSimulationContext(simContext);
+
+	for (Cell* root : exteriorRoots)
+	{
+		// Capture first to see what we can get in this moment
+		root->simulateTick_serial(simContext);
+		const float bufferedCap = root->getCurrentBufferedCap();
+
+		root->resetCapacityUsedInSubtree(); // Reset the used capacity
+
+		if (noInteriorRoots || (bufferedCap - root->getCachedEnergyConsumedStat() < threshold))
+		{
+			outStream << "The subtree starting at (" << root->m_row << "," << root->m_column << ") is being garbage collected. Flow: " << bufferedCap << " consumed energy: " << root->getCachedEnergyConsumedStat() << " threshold: " << threshold << std::endl;
+			garbageCollectSubtree(root);
+		}
+	}
+
+	// Update the internal cells info just to be safe for links creation :)
+	updateInternalCellsInfo();
+}
+
+void BoardObject::garbageCollectSubtree(Cell* root)
+{
+	m_garbageCollectedResources[root->m_symbol]++;
+
+	// Iterate over all subtrees and delete the cells and links
+	Cell* childrenList[DIR_COUNT];
+	root->fillChildrenList(childrenList);
+
+	// Garbage collect children
+	for (int childIter = 0; childIter < DIR_COUNT; childIter++)
+	{
+		Cell* child = childrenList[childIter];
+		if (child == nullptr)
+			continue;
+
+		assert(child->m_cellType == CELL_EXTERIOR && "I'm expecting only exterior cells here !!!");
+
+		garbageCollectSubtree(child);
+	}
+
+	// Reset this node too
+	root->reset();
+}
+
+void BoardObject::addPotentialNewCellsAround(std::vector<ResourceAllocatedEval>& validSet, const CellType cellType, const int row, const int col, Cell::UniversalHash2D& hash2D, const std::vector<char>& availableSymbolsToFill) const
+{
+	for (int dirIter = 0; dirIter < DIR_COUNT; dirIter++)
+	{
+		const int potentialRow = Cell::DIR_OFFSET[dirIter].row + row;
+		const int potentialCol = Cell::DIR_OFFSET[dirIter].col + col;
+
+		// Must be on table valid pos, free and not in hash already added
+		// And a single valid neighbor (that is the one it is attached to)
+		if (!isCoordinateValid(potentialRow, potentialCol) ||
+			!m_board[potentialRow][potentialCol].isFree() ||
+			hash2D.isCellSet(potentialRow, potentialCol) ||
+			this->getNumNeighboors(potentialRow, potentialCol) > 1)
+		{
+			continue;
+		}
+
+		// If the parent cell is a membrane cell then the new position must be OUTSIDE membrane
+		if (m_board[row][col].m_cellType == CELL_MEMBRANE && getCellTypeRelativeToMembrane(potentialRow, potentialCol) != cellType)
+			continue;
+
+		// Valid, add it to the set and move further
+		hash2D.setCell(potentialRow, potentialCol);
+
+		// Add for all available symbols, check later if valid
+		for (const char availableSymbol : availableSymbolsToFill)
+		{
+			ResourceAllocatedEval rsc;
+			rsc.pos = TablePos(potentialRow, potentialCol);
+			rsc.symbol = availableSymbol;
+			validSet.emplace_back(rsc);
+		}
+	}
+}
+
+CellType BoardObject::getCellTypeRelativeToMembrane(const int row, const int col) const
+{
+	const bool isInteriorMembraneRow = m_membraneBoundsPerRow[row].first <= col && col <= m_membraneBoundsPerRow[row].second;
+	const bool isInteriorMembraneCol = m_membraneBoundsPerCol[col].first <= row && row <= m_membraneBoundsPerCol[col].second;
+
+	if (isInteriorMembraneCol && isInteriorMembraneRow)
+		return CELL_INTERIOR;
+	if (m_board[row][col].m_cellType == CELL_MEMBRANE)
+		return CELL_MEMBRANE;
+	else
+		return CELL_EXTERIOR;
+}
+
+
+void BoardObject::getMembraneCellsChildren(std::vector<Cell *>& outList, const CellType targetCellType /* = CELL_NOTSET */)
+{
+	outList.clear();
+
+	std::vector<Cell*> membraneCells;
+	getMembraneCells(membraneCells);
+
+	for (Cell* memCell : membraneCells)
+	{
+		Cell* childrenList[DIR_COUNT];
+		memCell->fillChildrenList(childrenList);
+
+		// Iterate over its external children and simulate tick to capture the flow out of them since they contains the leaf nodes
+		for (int childIter = 0; childIter < DIR_COUNT; childIter++)
+		{
+			Cell* child = childrenList[childIter];
+			if (child == nullptr || (targetCellType != CELL_NOTSET && child->m_cellType != targetCellType))
+				continue;
+
+			outList.push_back(child);
+		}
+	}
+}
+
+
 #endif
 
 bool BoardObject::generateRandomBoard(const int numDepthBranches, const int numSources)
@@ -2691,6 +2700,7 @@ bool BoardObject::generateRandomBoard(const int numDepthBranches, const int numS
 	return false;
 }
 
+#if RUNMODE == DIRECTIONAL_MODE
 bool BoardObject::optimizeMembrane_byCutRowCols()
 {
 	int outRowToCut = INVALID_POS, outColToCut = INVALID_POS;
@@ -3097,6 +3107,7 @@ bool BoardObject::evaluateBestCornerCutChance(const std::vector<TablePos>& infle
 	// If we have any flow benefit, check the result in outBestCornerCutRes
 	return (outBestFlowBenefit > 0.0f);
 }
+#endif
 
 void BoardObject::reorganize(ostream& outStream)
 {
