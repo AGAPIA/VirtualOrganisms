@@ -77,7 +77,7 @@ bool Simulator::saveBoard(const char* fileNameToSave)
 		const TablePos& pos = it.first;
 		const SourceInfo& srcInfo = it.second;
 
-		outFile << pos.row <<" " << pos.col <<" " << srcInfo.getPower() << endl;
+		outFile << pos.row << " " << pos.col << " " << srcInfo.getPower() << endl;
 	}
 	outFile << endl;
 
@@ -126,10 +126,10 @@ bool Simulator::initialize_fromFile(const char* fileToInitializeFrom)
 	char buffLine[MAX_COLS + 1];
 	for (int i = 0; i < MAX_ROWS; i++)
 	{
-		for(int j = 0; j < MAX_COLS; j++)
-		{		
-			inFile >>buffLine[j];
-			if (buffLine[j]=='\0' || buffLine[j] =='\r' || buffLine[j] == '\n')
+		for (int j = 0; j < MAX_COLS; j++)
+		{
+			inFile >> buffLine[j];
+			if (buffLine[j] == '\0' || buffLine[j] == '\r' || buffLine[j] == '\n')
 			{
 				j = -1;
 				continue;
@@ -147,7 +147,7 @@ bool Simulator::initialize_fromFile(const char* fileToInitializeFrom)
 			m_board(i, j).setSymbol(buffLine[j]);
 		}
 	}
-	
+
 	// The E model has root at any give pos. In TC it is in upper right
 	int rootColumn = g_247eModelRootCol;
 	int rootRow = g_247eModelRootRow;
@@ -187,7 +187,7 @@ bool Simulator::checkBoardLanguageConstraints() const
 	if (!m_board.isCompliantWithRowColPatterns(INVALID_POS, INVALID_POS, &firstWrongPos))
 	{
 		(*g_debugLogOutput) << " !!!!!!!!!! Incorrect Row / COlumn patters identified !! !!!!!!!!!!!!" << std::endl;
-		(*g_debugLogOutput) << "The first wrong pos is (" << firstWrongPos.row << "," << firstWrongPos.col <<")" << std::endl;
+		(*g_debugLogOutput) << "The first wrong pos is (" << firstWrongPos.row << "," << firstWrongPos.col << ")" << std::endl;
 
 		return false;
 	}
@@ -206,7 +206,7 @@ void Simulator::reorganize()
 // That's because Cells will subtract energy from where the source are at every moment
 bool Simulator::addSource(const TablePos& tablePos, const SourceInfo& source)
 {
-	const bool res = m_board.propagateSourceEvent(Cell::EVENT_SOURCE_ADD, tablePos, source, false); 
+	const bool res = m_board.propagateSourceEvent(Cell::EVENT_SOURCE_ADD, tablePos, source, false);
 	//assert(res && "didn't succeed to add the source");
 	return res;
 }
@@ -254,7 +254,7 @@ void Simulator::doStepByStepSimulation(const bool writeHelperOutput, std::istrea
 
 		if (inStream.eof())
 			break;
-		
+
 		requestCounter++;
 		if (writeHelperOutput)
 		{
@@ -267,186 +267,191 @@ void Simulator::doStepByStepSimulation(const bool writeHelperOutput, std::istrea
 			outStream << "##########################################################" << endl;
 		}
 
+		m_board.setUseDelayTicksDataFlowCapture(true); // use by default delay ticks data flow capture
+
 		inStream >> ev;
 
 		switch (ev)
 		{
-			case 'E': // Nothing:
-			case 'e':
+		case 'E': // Nothing:
+		case 'e':
+		{
+			doDataFlowSimulation_serial(false, outStream);
+			outStream << endl << endl;
+		}
+		break;
+
+		case 'O':
+		case 'o':
+		{
+			doDataFlowSimulation_serial(true, outStream);
+			addBoardInHistory(&m_board);
+			m_root->onRootMsgReorganize();
+			printBoard(outStream);
+		}
+		break;
+
+		case 's':
+		case 'S':
+		{
+			addBoardInHistory(&m_board);
+
+			TablePos pos;
+			if (writeHelperOutput) { outStream << "Source ROW = "; }
+			inStream >> pos.row;
+
+			if (writeHelperOutput) { outStream << "Source COL = "; }
+			inStream >> pos.col;
+
+			char innerEv = 'A';
+			bool result = false;
+			if (writeHelperOutput) { outStream << "event type: M for modify existing, A to add, R to remove: "; }
+			inStream >> innerEv;
+
+			switch (innerEv)
 			{
-				doDataFlowSimulation_serial(false, outStream);
-				outStream << endl << endl;
-			}
-			break;
-
-			case 'O':
-			case 'o':
-			{
-				doDataFlowSimulation_serial(true, outStream);
-				addBoardInHistory(&m_board);
-				m_root->onRootMsgReorganize();
-				printBoard(outStream);
-			}
-			break;
-
-			case 's':
-			case 'S':
-			{
-				addBoardInHistory(&m_board);
-
-				TablePos pos;
-				if (writeHelperOutput) { outStream << "Source ROW = "; }
-				inStream >> pos.row;
-
-				if (writeHelperOutput) { outStream << "Source COL = "; }
-				inStream >> pos.col;
-
-				char innerEv = 'A';
-				bool result = false;
-				if (writeHelperOutput) { outStream << "event type: M for modify existing, A to add, R to remove: "; }
-				inStream >> innerEv;
-
-				switch (innerEv)
-				{
-					case 'R':
-					case 'r':
-					{
-						result |= removeSource(pos);
-					}
-					break;
-
-					case 'A':
-					case 'a':
-					{
-						SourceInfo sourceInfo;
-						if (writeHelperOutput) { outStream << "Source power = "; }
-						float srcPower;
-						inStream >> srcPower;  
-						sourceInfo.overridePower(srcPower);
-
-						result |= addSource(pos, sourceInfo);
-					}
-					break;
-
-					case 'M':
-					case 'm':
-					{
-						SourceInfo sourceInfo;
-						if (writeHelperOutput) { outStream << "New Source power = "; }
-						float srcPower;
-						inStream >> srcPower;
-						sourceInfo.overridePower(srcPower);
-
-						result |= modifySource(pos, sourceInfo);
-					}
-					break;
-				}
-				
-				outStream << (result ? "Your operation was done !" : "Your operation failed. Check the messages above") << endl;
-
-				printBoard(outStream);
-			}
-			break;
-
-			case 'Q':
-			{
-				outStream << "Exit! "; return;
-			}
-			break;
-
 			case 'R':
 			case 'r':
 			{
-				addBoardInHistory(&m_board);				
-				m_board.reorganize(outStream);
-				printBoard(outStream);
+				result |= removeSource(pos);
 			}
 			break;
+
+			case 'A':
+			case 'a':
+			{
+				SourceInfo sourceInfo;
+				if (writeHelperOutput) { outStream << "Source power = "; }
+				float srcPower;
+				inStream >> srcPower;
+				sourceInfo.overridePower(srcPower);
+
+				result |= addSource(pos, sourceInfo);
+			}
+			break;
+
+			case 'M':
+			case 'm':
+			{
+				SourceInfo sourceInfo;
+				if (writeHelperOutput) { outStream << "New Source power = "; }
+				float srcPower;
+				inStream >> srcPower;
+				sourceInfo.overridePower(srcPower);
+
+				result |= modifySource(pos, sourceInfo);
+			}
+			break;
+			}
+
+			outStream << (result ? "Your operation was done !" : "Your operation failed. Check the messages above") << endl;
+
+			printBoard(outStream);
+		}
+		break;
+
+		case 'Q':
+		{
+			outStream << "Exit! "; return;
+		}
+		break;
+
+		case 'R':
+		case 'r':
+		{
+			// We want only a reorganization here
+			m_board.setUseDelayTicksDataFlowCapture(false);
+
+			addBoardInHistory(&m_board);
+			m_board.reorganize(outStream);
+			printBoard(outStream);
+		}
+		break;
 #if RUNMODE == DIRECTIONAL_MODE
-			case '1':
-			{
-				addBoardInHistory(&m_board);
+		case '1':
+		{
+			addBoardInHistory(&m_board);
 
-				m_board.runGarbageCollector(g_energyLossThreshold, outStream);
+			m_board.runGarbageCollector(g_energyLossThreshold, outStream);
 
-				printBoard(outStream);
-			}
-			break;
+			printBoard(outStream);
+		}
+		break;
 
-			case '2':
-			{
-				addBoardInHistory(&m_board);
+		case '2':
+		{
+			addBoardInHistory(&m_board);
 
-				m_board.expandExternalTrees();
-			}
-			break;
-			case '3':
-			{
-				addBoardInHistory(&m_board);
+			m_board.expandExternalTrees();
+		}
+		break;
+		case '3':
+		{
+			addBoardInHistory(&m_board);
 
-				m_board.expandInternalTrees();
-			}
-			break;
-			case '4':
-			{
-				addBoardInHistory(&m_board);
+			m_board.expandInternalTrees();
+		}
+		break;
+		case '4':
+		{
+			addBoardInHistory(&m_board);
 
-				m_board.optimizeMembrane();
+			m_board.optimizeMembrane();
 
-				printBoard(outStream);
-			}break;
+			printBoard(outStream);
+		}break;
 
-			case '5':
-			{
-				addBoardInHistory(&m_board);
-				m_board.optimizeMembrane_byCutRowCols();
-				printBoard(outStream);
-			}break;
+		case '5':
+		{
+			addBoardInHistory(&m_board);
+			m_board.optimizeMembrane_byCutRowCols();
+			printBoard(outStream);
+		}break;
 
-			case '6':
-			{
-				addBoardInHistory(&m_board);
-				m_board.optimizeMembrane_byCutCorners();
-				printBoard(outStream);
-			}break;
+		case '6':
+		{
+			addBoardInHistory(&m_board);
+			m_board.optimizeMembrane_byCutCorners();
+			printBoard(outStream);
+		}break;
 #endif
-			case 'U':
-			{
-				undoBoard();
-				printBoard(outStream);
-			}
-			break;
+		case 'U':
+		{
+			undoBoard();
+			printBoard(outStream);
+		}
+		break;
 
-			case 'V':
-			{
-				static char fileNameBuff[2048];
-				if (writeHelperOutput) { outStream << "File name: "; }
-				inStream >> fileNameBuff;
-				saveBoard(fileNameBuff);
-			}
-			break;
+		case 'V':
+		{
+			static char fileNameBuff[2048];
+			if (writeHelperOutput) { outStream << "File name: "; }
+			inStream >> fileNameBuff;
+			saveBoard(fileNameBuff);
+		}
+		break;
 
-			case 'W':
-			{
-				static char fileNameBuff[2048];
-				if (writeHelperOutput) { outStream << "File name: "; }
-				inStream >> fileNameBuff;
+		case 'W':
+		{
+			static char fileNameBuff[2048];
+			if (writeHelperOutput) { outStream << "File name: "; }
+			inStream >> fileNameBuff;
 
-				initialize_fromFile(fileNameBuff);
-			}
-			break;
+			initialize_fromFile(fileNameBuff);
+		}
+		break;
 
-			case 'P':
-			{
-				printBoard(outStream);
-			}
-			break;
+		case 'P':
+		{
+			printBoard(outStream);
+		}
+		break;
 
-			default:
-			{
-				outStream << "Invalid option !" << endl;
-			}
-			break;
+		default:
+		{
+			outStream << "Invalid option !" << endl;
+		}
+		break;
 		}
 	}
 }
@@ -500,7 +505,7 @@ bool Simulator::autoSimulate(const int numSteps, int minPower, int maxPower, con
 		// TODO: generate events 
 		const int choice = randRange(1, 10);
 		logStep.ev = choice;
-		
+
 		// 30% to do nothing or data flow analysis
 		if (choice <= 2)
 		{
@@ -509,7 +514,7 @@ bool Simulator::autoSimulate(const int numSteps, int minPower, int maxPower, con
 				doDataFlowSimulation_serial(false, outFile);
 			}
 			continue;
-		}			
+		}
 		// 40% for reorganization
 		else if (choice <= 7)
 		{
@@ -524,8 +529,8 @@ bool Simulator::autoSimulate(const int numSteps, int minPower, int maxPower, con
 				SourceInfo src;
 				float newPower = (float)randRange(minPower, maxPower);
 				src.overridePower(newPower);
-				TablePos pos(randRange(0, MAX_ROWS-1), randRange(0, MAX_COLS-1));
-				
+				TablePos pos(randRange(0, MAX_ROWS - 1), randRange(0, MAX_COLS - 1));
+
 				addSource(pos, src);
 
 				logStep.isAddedSource = true;
@@ -623,7 +628,7 @@ void Simulator::doUnitTests()
 		int optionIter = 0;
 		for (const AvailablePosInfoAndDeltaScore& posAndScore : positions)
 		{
-			cout << "Option " << optionIter <<": " << posAndScore << " ";
+			cout << "Option " << optionIter << ": " << posAndScore << " ";
 			optionIter++;
 		}
 	}
@@ -667,27 +672,27 @@ void Simulator::generateOptimalAndRandomBoard(BoardObject& outOptimalBoard, Boar
 		int s1Col = pos1.col;
 		int s2Col = pos2.col;
 
-				{
-					// Remove all sources and add these two
-					outOptimalBoard.propagateSourceEvent(Cell::EVENT_SOURCE_REMOVE, TablePos (0, 0), SourceInfo(), true);
+		{
+			// Remove all sources and add these two
+			outOptimalBoard.propagateSourceEvent(Cell::EVENT_SOURCE_REMOVE, TablePos(0, 0), SourceInfo(), true);
 
-					// Add the new sources
-					TablePos s1Pos(s1Row, s1Col);
-					TablePos s2Pos(s2Row, s2Col);
-					outOptimalBoard.propagateSourceEvent(Cell::EVENT_SOURCE_ADD, s1Pos, s1Info, false);
-					outOptimalBoard.propagateSourceEvent(Cell::EVENT_SOURCE_ADD, s2Pos, s2Info, false);
+			// Add the new sources
+			TablePos s1Pos(s1Row, s1Col);
+			TablePos s2Pos(s2Row, s2Col);
+			outOptimalBoard.propagateSourceEvent(Cell::EVENT_SOURCE_ADD, s1Pos, s1Info, false);
+			outOptimalBoard.propagateSourceEvent(Cell::EVENT_SOURCE_ADD, s2Pos, s2Info, false);
 
-					outOptimalBoard.doDataFlowSimulation_serial(1);
-					const float flow = outOptimalBoard.getLastSimulationAvgDataFlowPerUnit();
+			outOptimalBoard.doDataFlowSimulation_serial(1);
+			const float flow = outOptimalBoard.getLastSimulationAvgDataFlowPerUnit();
 
-					if (flow > maxFlow)
-					{
-						maxFlow = flow;
-						bestS1 = s1Pos;
-						bestS2 = s2Pos;
-					}
-				}
+			if (flow > maxFlow)
+			{
+				maxFlow = flow;
+				bestS1 = s1Pos;
+				bestS2 = s2Pos;
+			}
 		}
+	}
 
 	// Apply the best option for this board
 	outOptimalBoard.propagateSourceEvent(Cell::EVENT_SOURCE_REMOVE, TablePos(), SourceInfo(), true);
@@ -722,7 +727,7 @@ void Simulator::generateOptimalAndRandomBoard(BoardObject& outOptimalBoard, Boar
 			outRandomBoard.reorganize(*g_debugLogOutput);
 			outRandomBoard.doDataFlowSimulation_serial(1);
 			const float avgFlow = outRandomBoard.getLastSimulationAvgDataFlowPerUnit();
-			
+
 			if (avgFlow > prevAvgFlow)
 				prevAvgFlow = avgFlow;
 			else
@@ -811,12 +816,12 @@ void Simulator::simulateOptimalReconfigurationScenarios(const int numScenarios, 
 	avgFlowPercent /= simStats.size();
 	avgReconfigsMade /= simStats.size();
 
-	resStatsFile << "Avg percent to optimal after reconfigurations: " << avgFlowPercent <<endl;
+	resStatsFile << "Avg percent to optimal after reconfigurations: " << avgFlowPercent << endl;
 	resStatsFile << "Avg num reconfigurations done to max flow: " << avgReconfigsMade << endl;
 
 	int scenarioIter = 0;
 	for (const OptimalVsInitialReconfigFlow& entry : simStats)
-	{		
+	{
 		resStatsFile << "Scenario " << scenarioIter << " -  optimal flow: " << entry.optimalFlow << " after reconfig: " << entry.afterConfigFlow << " num reconfigs done: " << entry.numReconfigMade << endl;
 		scenarioIter++;
 	}
@@ -932,7 +937,7 @@ void Simulator::simulateOptimalVsRandomFlowScenario(const char* fileToInitialize
 	{
 		BoardObject* staticBoard = new BoardObject();
 		BoardObject* dynamicBoard = new BoardObject();
-		
+
 		// Tree collector
 		if (g_useEModel == false)
 		{
@@ -968,7 +973,7 @@ void Simulator::simulateOptimalVsRandomFlowScenario(const char* fileToInitialize
 
 	ofstream resStatsFile("resultsStats.txt", std::ofstream::out);
 
-	ostream* streamsToWriteResults[2] = { &resStatsFile, &std::cout};
+	ostream* streamsToWriteResults[2] = { &resStatsFile, &std::cout };
 
 	for (int i = 0; i < 2; i++)
 	{

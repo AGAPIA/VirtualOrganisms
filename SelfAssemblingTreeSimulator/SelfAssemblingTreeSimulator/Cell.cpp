@@ -6,7 +6,7 @@
 #include <iomanip>
 #include <stdlib.h>
 
-static const char* DIRECTION_STRING[DIR_COUNT]=
+static const char* DIRECTION_STRING[DIR_COUNT] =
 {
 	"LEFT",
 	"DOWN",
@@ -54,7 +54,7 @@ DIRECTION getOppositeDirection(const DIRECTION dir)
 	return OppositeDIR[dir];
 }
 
-const TablePos Cell::DIR_OFFSET[DIR_COUNT]=
+const TablePos Cell::DIR_OFFSET[DIR_COUNT] =
 {
 	TablePos(0, -1),
 	TablePos(1, 0),
@@ -137,7 +137,7 @@ void Cell::operator=(const Cell& other)
 
 		m_flowStatistics = nullptr;
 	}
-	
+
 	m_symbol = other.m_symbol;
 	m_distanceToRoot = other.m_symbol;
 	m_isEmpty = other.m_isEmpty;
@@ -183,9 +183,9 @@ void Cell::reset(const bool resetSymbolToo /*= true*/)
 	m_boardView = nullptr;
 	m_remainingTicksToDelayDataFlowCapture = 0;
 	m_isRented = false;
-	m_lastEnergyConsumedStat = 0.0f;
 
 #if RUNMODE == DIRECTIONAL_MODE
+	m_lastEnergyConsumedStat = 0.0f;
 	m_cellType = CELL_NOTSET;
 #endif
 }
@@ -302,7 +302,7 @@ void Cell::onMsgDiscoverStructure(int currRow, int currCol, int depth)
 
 			Cell* prev = *m_previousByDir[dirIter];
 			if (prev)
-				prev->onMsgDiscoverStructure(currRow + rowOffset, currCol + colOffset, depth + 1 );
+				prev->onMsgDiscoverStructure(currRow + rowOffset, currCol + colOffset, depth + 1);
 		}
 	}
 #else
@@ -321,6 +321,11 @@ void Cell::onRootMsgReorganize()
 #else
 	assert(m_column == MAX_COLS - 1 && m_row == 0);	// Just a check for sanity :)
 #endif
+	// In the case we call reorganize and we still have a subtree that waiting to be applied
+	if (m_boardView->getUseTicksToDelayDataFlowCapture() && m_boardView->getRemainingTicksUntilApplyCutSubtree() > 0)
+	{
+		return;
+	}
 
 	// Allocate an array for results - TODO: optimize we should know easily how many nodes are in the tree 
 	std::vector<AvailablePosInfoAndDeltaScore> localBestResults;
@@ -433,7 +438,7 @@ void Cell::onMsgReorganizeStart(std::vector<AvailablePosInfoAndDeltaScore>& outp
 			{
 				outMsg << " " << sol;
 			}
-			
+
 			outMsg << "\n";
 			*g_debugLogOutput << outMsg.str();
 		}
@@ -452,8 +457,18 @@ void Cell::onMsgReorganizeEnd(int selectedRow, int selectedCol, const AvailableP
 	{
 		SubtreeInfo subtreeToMove;
 		m_boardView->cutSubtree(selectedRow, selectedCol, subtreeToMove);
-		const bool res = m_boardView->tryApplySubtree(targetPosAndDir.row, targetPosAndDir.col, subtreeToMove, true, true); // double check
-		assert(res);
+		if (!m_boardView->getUseTicksToDelayDataFlowCapture()) // We only make a reconfiguration then apply the subtree now
+		{
+			const bool res = m_boardView->tryApplySubtree(targetPosAndDir.row, targetPosAndDir.col, subtreeToMove, true, true); // double check
+			assert(res);
+		}
+		else
+		{
+			// The root decide about the cell that will have to delay some ticks data buffering since it will have to change his parent
+			m_boardView->m_board[selectedRow][selectedCol].m_remainingTicksToDelayDataFlowCapture = manhattanDist(TablePos(selectedRow, selectedCol), TablePos(targetPosAndDir.row, targetPosAndDir.col));
+			m_boardView->setRemainingTicksUntilApplyCutSubtree(m_boardView->m_board[selectedRow][selectedCol].m_remainingTicksToDelayDataFlowCapture);
+			m_boardView->m_SubtreeCut.set(targetPosAndDir, subtreeToMove, true); // Save the subtree to be applied later - only root cell will have it
+		}
 
 		isBoardChanged = true;
 	}
@@ -466,28 +481,17 @@ void Cell::onMsgReorganizeEnd(int selectedRow, int selectedCol, const AvailableP
 
 	isBoardChanged |= analyzeElasticModel(*g_debugLogOutput);
 
+
 	// If the board was changed, discover the structure and broadcast it to everyone
 	if (isBoardChanged)
 	{
 		onMsgDiscoverStructure(m_row, m_column, 0);
 		onMsgBroadcastStructure(m_boardView);
 	}
-	
-	// If I´m the cell selected for move, i will have to delay some ticks data buffering since i have to change my parent
-	if (selectedRow == m_row && selectedCol == m_column)
-	{
-		m_remainingTicksToDelayDataFlowCapture = g_ticksToDelayDataFlowCaptureOnRestructure;
-	}
 }
 
 void Cell::captureDataFlow(const SimulationContext& simContext)
 {
-	if (m_remainingTicksToDelayDataFlowCapture > 0)
-	{
-		m_remainingTicksToDelayDataFlowCapture--;
-		return; 
-	}
-	
 	// Captures as much as it can from environment (if leaf) or from children if internal node	
 
 	// Doesn't matter if parents / or children update in parallel stuff, the most important thing is to not violate the flow constraint
@@ -573,11 +577,11 @@ void Cell::captureFromChildren(const float capRemaining, const CellType targetCe
 		capacityPerChild[i] = 0.0f;
 		const Cell* child = children[i];
 
-		if (child == nullptr 
+		if (child == nullptr
 #if RUNMODE == DIRECTIONAL_MODE
 			|| (targetCellType != CELL_NOTSET && child->m_cellType != targetCellType)
 #endif
-		)
+			)
 			continue;
 
 		capacityPerChild[i] = child->getCurrentBufferedCap();
@@ -614,7 +618,9 @@ void Cell::simulateTick_serial(const SimulationContext& simContext)
 	assert(m_cellType == CELL_EXTERIOR && "In directional mode, only the external cells can capture something");
 #endif
 
+#if RUNMODE == DIRECTIONAL_MODE
 	m_lastEnergyConsumedStat = 0.0f;
+#endif
 
 	// First ,simulate the children
 	Cell* childrenList[DIR_COUNT];
@@ -626,12 +632,14 @@ void Cell::simulateTick_serial(const SimulationContext& simContext)
 		if (child)
 		{
 			child->simulateTick_serial(simContext);
-
+#if RUNMODE == DIRECTIONAL_MODE
 			m_lastEnergyConsumedStat += child->m_lastEnergyConsumedStat;
+#endif
 		}
 	}
-
+#if RUNMODE == DIRECTIONAL_MODE
 	m_lastEnergyConsumedStat += g_costPerResource[m_symbol];
+#endif
 
 	// Then capture their data 
 	captureDataFlow(simContext);
@@ -648,11 +656,11 @@ void Cell::simulateTick_serial(const SimulationContext& simContext)
 #endif
 }
 
-float Cell::getRemainingCap() const 
-{ 
-	const float cap = (0.0f + g_maxFlowPerCell - m_bufferedData.getCurrentCap()); 
-	assert(cap >= 0.0f); 
-	return cap; 
+float Cell::getRemainingCap() const
+{
+	const float cap = (0.0f + g_maxFlowPerCell - m_bufferedData.getCurrentCap());
+	assert(cap >= 0.0f);
+	return cap;
 }
 
 void Cell::gatherNewResourcesPos(Cell* cell, std::vector<TablePos>& outPositions, UniversalHash2D& hash)
@@ -670,7 +678,7 @@ void Cell::gatherNewResourcesPos(Cell* cell, std::vector<TablePos>& outPositions
 		{
 			outPositions.push_back(nextPosLeft);
 		}
-		
+
 		TablePos nextPosDown(currRow + 1, currCol);
 		if (isCoordinateValid(nextPosDown) && hash.isCellSet(nextPosDown) == false && m_boardView->isPosFree(nextPosDown))
 		{
@@ -703,7 +711,7 @@ void Cell::elasticBoardCompare(BoardObject& copyBoard, const bool isResourceAdde
 
 	if (g_verboseElasticModel_All)
 	{
-		outDebugStream << " Trying resource Symbol-" << symbolOfResource << " at position " << resourcePos.row<<","<<resourcePos.col << " and benefit diff to before is " << newResourceBenefitDiff <<"(flow before: " << oldAvgFlow <<", after: " << newAvgFlow << "\n";
+		outDebugStream << " Trying resource Symbol-" << symbolOfResource << " at position " << resourcePos.row << "," << resourcePos.col << " and benefit diff to before is " << newResourceBenefitDiff << "(flow before: " << oldAvgFlow << ", after: " << newAvgFlow << "\n";
 	}
 }
 
@@ -741,7 +749,7 @@ bool Cell::root_checkAddResources(std::ostream& outDebugStream)
 			if (m_boardView->isPosFree(addPos))
 			{
 				BoardObject copyBoard = *m_boardView;
-				Cell& targetCell = copyBoard(addPos.row, addPos.col); 
+				Cell& targetCell = copyBoard(addPos.row, addPos.col);
 				targetCell.setEmpty();
 				targetCell.setSymbol(symbolToAdd);	// We already know from pos list if this cell is a valid one or not
 
@@ -942,7 +950,7 @@ float Cell::donateFlow(const float maxFlowToDonate)
 		for (int i = 0; i < DIR_COUNT; i++)
 		{
 			Cell* child = childrenList[i];
-			if (child == nullptr) 
+			if (child == nullptr)
 				continue;
 
 			assert(child->m_cellType == CELL_INTERIOR && "I'm expecting this node to be called only for interior nodes !");
@@ -1049,7 +1057,7 @@ std::ostream& operator <<(std::ostream& out, const ElasticResourceEval& data)
 	if (data.isValid() == false)
 		out << "No valid results found for resources\n";
 	else
-		out << "Best found result found "<< "Symbol- " << data.symbolAdded << " Pos- " << data.pos.row << "," << data.pos.col << " diff benefit " << data.benefit << "\n";
+		out << "Best found result found " << "Symbol- " << data.symbolAdded << " Pos- " << data.pos.row << "," << data.pos.col << " diff benefit " << data.benefit << "\n";
 
 	return out;
 }

@@ -44,20 +44,20 @@ public:
 		m_flowPerTick = new float[maxStats];
 		m_head = 0;
 	}
-	
-	virtual ~DataFlowStatistics() 
+
+	virtual ~DataFlowStatistics()
 	{
-		delete [] m_flowPerTick;
+		delete[] m_flowPerTick;
 	}
 
-	
+
 	void clearStats() { m_head = 0; }
 	void addStat(const float dataFlow)
 	{
 		if (m_head >= m_maxStats)
 		{
 			assert(false && "not enough records stored for statistics or you forgot to reset");
-			
+
 			return;
 		}
 
@@ -69,13 +69,13 @@ public:
 		m_head--;
 		assert(m_head >= 0);
 	}
-	
+
 	float getAvgDataFlow() const
 	{
 		float sum = 0;
 		for (int i = 0; i < m_head; i++)
 			sum += m_flowPerTick[i];
-		return (sum/m_head);
+		return (sum / m_head);
 	}
 
 	DataFlowStatistics* duplicate() const
@@ -143,7 +143,7 @@ struct Cell
 	// Previous 
 	Cell* m_prevLeft, *m_prevRight, *m_prevUp, *m_prevDown;
 
-	Cell** m_previousByDir[DIR_COUNT]=
+	Cell** m_previousByDir[DIR_COUNT] =
 	{
 		&m_prevLeft,
 		&m_prevDown,
@@ -173,14 +173,14 @@ struct Cell
 	static const TablePos DIR_OFFSET[DIR_COUNT];
 
 	static const std::unordered_map<char, DIRECTION> g_symbolToDirection;
-	static DIRECTION getDirectionFromSymbol(const char symbol) 
+	static DIRECTION getDirectionFromSymbol(const char symbol)
 	{
 		return g_symbolToDirection.find(symbol)->second;
 	}
 
-//#if RUNMODE == DIRECTIONAL_MODE
+	//#if RUNMODE == DIRECTIONAL_MODE
 	CellType m_cellType = CELL_NOTSET;
-//#endif
+	//#endif
 
 	BoardObject* m_boardView; // This is broadcasted by root. I;m the owner of this, even if it's a pointer
 
@@ -205,10 +205,10 @@ struct Cell
 	void reset(const bool resetSymbolToo = true);
 	void resetLinks();
 
-	bool isFree() const 
-	{ 
+	bool isFree() const
+	{
 		assert(m_isEmpty == (m_symbol == EMPTY_SYMBOL));
-		return m_isEmpty; 
+		return m_isEmpty;
 	}
 
 	// Captures from children at maximum the capRemaining capacity
@@ -235,7 +235,7 @@ struct Cell
 
 		if (m_prevDown)
 			m_prevDown->m_up = nullptr;
-		
+
 		if (m_prevLeft)
 			m_prevLeft->m_right = nullptr;
 
@@ -298,7 +298,7 @@ struct Cell
 
 	// Returns true if elastic model added/removed something
 	bool analyzeElasticModel(std::ostream& outDebugStream);
-	
+
 	void initFlowStatistics(const int maxNumRecords) { m_flowStatistics = new DataFlowStatistics(maxNumRecords); }
 	void addNewFlowRecord(const float value) { m_flowStatistics->addStat(value); }
 	void retractLastFlowRecord() { m_flowStatistics->removeLastValue(); }
@@ -323,7 +323,7 @@ struct Cell
 	}
 #endif
 
-	bool isLeaf() const 
+	bool isLeaf() const
 	{
 #if RUNMODE == DIRECTIONAL_MODE
 		return m_cellType == CELL_EXTERIOR && hasNoPrevNode();
@@ -351,9 +351,13 @@ struct Cell
 	float getCurrentBufferedCap() const { return m_bufferedData.getCurrentCap(); }
 	void resetCapacityUsedInSubtree();
 
+	void resetTicksToDelayDataFlowCapture() { m_remainingTicksToDelayDataFlowCapture = 0; }
+
+#if RUNMODE == DIRECTIONAL_MODE
 	float getCachedEnergyConsumedStat() const {
 		return m_lastEnergyConsumedStat;
 	}
+#endif
 
 	struct UniversalHash2D
 	{
@@ -371,27 +375,29 @@ struct Cell
 
 	// This records the flow statistics when requested, on the root only
 	DataFlowStatistics* m_flowStatistics;
-	
+
 private:
-		
+
 	void gatherNewResourcesPos(Cell* cell, std::vector<TablePos>& outPositions, UniversalHash2D& hash);
 
 
 	// Captures as much as it can from environment (if leaf) or from children if internal node
 	void captureDataFlow(const SimulationContext& simContext);
 
-	void elasticBoardCompare(BoardObject& copyBoard, const bool isResourceAdded, const char symbolOfResource, const TablePos& resourcePos, ElasticResourceEval& outResult, 
-							 const float oldBenefitValue, std::ostream& outDebugStream);
+	void elasticBoardCompare(BoardObject& copyBoard, const bool isResourceAdded, const char symbolOfResource, const TablePos& resourcePos, ElasticResourceEval& outResult,
+		const float oldBenefitValue, std::ostream& outDebugStream);
 
-	
-	// How many ticks is data capture disabled for this not because this is a root of a subtree changing its position
-	int m_remainingTicksToDelayDataFlowCapture;
-	
+
+	// How many ticks is data capture disabled for this node because this is a root of a subtree changing its position
+	int m_remainingTicksToDelayDataFlowCapture = 0;
+
 	// Current buffered data in this node
 	BufferedTrafficData m_bufferedData;
 
+#if RUNMODE == DIRECTIONAL_MODE
 	// The energy consumed by this subtree cached at last simTick call
 	float m_lastEnergyConsumedStat;
+#endif
 };
 
 #endif

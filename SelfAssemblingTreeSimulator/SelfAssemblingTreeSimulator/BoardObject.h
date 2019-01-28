@@ -22,10 +22,10 @@ struct OffsetAndSymbol
 	char symbol;
 	bool isRented;
 
-	OffsetAndSymbol(const int _rowOff, const int _colOff, const char _symbol, const bool _isRented) 
+	OffsetAndSymbol(const int _rowOff, const int _colOff, const char _symbol, const bool _isRented)
 		: rowOff(_rowOff)
 		, colOff(_colOff)
-		, symbol(_symbol)	
+		, symbol(_symbol)
 		, isRented(_isRented)
 	{}
 };
@@ -142,7 +142,7 @@ struct BoardObject
 	// Tries to expand the current model in order to improve the costs
 	void expandExternalTrees();
 	void expandInternalTrees();
-	
+
 	void optimizeMembrane();
 	bool optimizeMembrane_byCutRowCols();
 	bool optimizeMembrane_byCutCorners();
@@ -214,7 +214,7 @@ struct BoardObject
 	void reset(const bool withoutStatistics = false, const bool resetSymbolsToo = true);
 
 	void updateSourcesPower();
-	void simulateTick_serial(const bool considerForStatistics = true );
+	void simulateTick_serial(const bool considerForStatistics = true);
 	void internal_gatherLeafNodes(const Cell* currentCell, std::vector<TablePos>& outLeafNodes);
 
 	// Set new cell on this board
@@ -235,8 +235,8 @@ struct BoardObject
 	// Checks if the current board filling is compliant with the given patterns on row and column
 	// TODO: make it take input parametric not globally
 	// Returns the wrong position if you want
-	bool isCompliantWithRowColPatterns(int onlyTestRow = INVALID_POS, int onlyTestCol = INVALID_POS,  TablePos* outWrongPos = nullptr) const;
-	
+	bool isCompliantWithRowColPatterns(int onlyTestRow = INVALID_POS, int onlyTestCol = INVALID_POS, TablePos* outWrongPos = nullptr) const;
+
 	// Checks if we have the same numbers of items after transformations - for debugging
 	bool isNumberOfCharactersGood() const;
 
@@ -318,6 +318,39 @@ struct BoardObject
 
 	std::unordered_set<RentedResourceInfo> m_rentedResources;
 
+	// Subtree that was cut and should be applied after m_remainingTicksUntilApplyCutSubtree ticks
+	struct SubtreeCutInfo
+	{
+		SubtreeCutInfo(AvailablePosInfoAndDeltaScore _posAndScoreInfo = AvailablePosInfoAndDeltaScore(), SubtreeInfo _subtreeInfo = SubtreeInfo(), bool _isSubtreeCut = false)
+		{
+			posAndScoreInfo = _posAndScoreInfo;
+			subtreeInfo = _subtreeInfo;
+			isSubtreeCut = _isSubtreeCut;
+		}
+
+		void set(AvailablePosInfoAndDeltaScore _posAndScoreInfo, SubtreeInfo _subtreeInfo, bool _isSubtreeCut)
+		{
+			posAndScoreInfo = _posAndScoreInfo;
+			subtreeInfo = _subtreeInfo;
+			isSubtreeCut = _isSubtreeCut;
+		}
+
+		void reset()
+		{
+			isSubtreeCut = false;
+		}
+
+		AvailablePosInfoAndDeltaScore posAndScoreInfo;
+		SubtreeInfo subtreeInfo;
+		bool isSubtreeCut = false;
+	};
+
+	SubtreeCutInfo	m_SubtreeCut;
+	int  getRemainingTicksUntilApplyCutSubtree() { return m_remainingTicksUntilApplyCutSubtree; }
+	int  setRemainingTicksUntilApplyCutSubtree(int ticks) { return m_remainingTicksUntilApplyCutSubtree = ticks; }
+
+	void setUseDelayTicksDataFlowCapture(bool useDelayTicksDataFlowCapture) { m_UseTicksToDelayDataFlowCapture = useDelayTicksDataFlowCapture; }
+	bool getUseTicksToDelayDataFlowCapture() { return m_UseTicksToDelayDataFlowCapture; }
 private:
 
 #if RUNMODE == DIRECTIONAL_MODE
@@ -329,7 +362,7 @@ private:
 	bool canCutColumn(const int column) const;
 	bool canCutRow(const int row) const;
 
-	typedef void (BoardObject::*membraneCutFunctorType)(const int index, const DIRECTION dir, const bool definitive) ;
+	typedef void (BoardObject::*membraneCutFunctorType)(const int index, const DIRECTION dir, const bool definitive);
 	void cutMembraneByRow(const int index, const DIRECTION dir, const bool definitive = false);
 	void cutMembraneByCol(const int index, const DIRECTION dir, const bool definitive = false);
 
@@ -345,7 +378,7 @@ private:
 		int indexS, indexM, indexE;
 
 		// How long does the cut goes on y and x row axes
-		int yOffset, xOffset; 
+		int yOffset, xOffset;
 
 		DIRECTION_TYPE dirType = DIR_TYPE_COUNT;
 
@@ -393,7 +426,7 @@ private:
 
 	// allSources is used for removing event only
 	bool internalPropagateSourceEvent(const Cell::BroadcastEventType srcEventType, Cell* cell, const TablePos& tablePos, const SourceInfo& source, const bool allSources, const int depth);
-	
+
 	// Recursively cuts the subtree starting at currCell - used by cutSubtree public func
 	void internalCutSubtree(const Cell& currCell, const int rowOff, const int colOff, SubtreeInfo& outSubtree);
 
@@ -412,14 +445,14 @@ private:
 
 	// Updates the columns attached to the up / down rows of the given interval
 	void internalCreateColsLinks(const int middleRow, const int colMin, const int colMax);
-	
+
 #else
 	// Used inside update links
 	void internalCreateLinks(Cell* prevCell, const DIRECTION dir, const int row, const int col);
 #endif
 
 	bool checkRow(const int row, const int startCol, const int endCol) const;
-	
+
 	bool checkCol(const int col, const int startRow, const int endRow) const;
 
 	void gatherLeafNodes(const Cell* currentCell, std::vector<TablePos>& outLeafNodes) const;
@@ -428,8 +461,11 @@ private:
 	Expression_Generator* m_colGenerator;
 	int m_numTicksRemainingToUpdateSources; // THe number of ticks remaining when all sources' targets should be updated
 
-	int m_rootRow = INVALID_POS; 
+	int m_rootRow = INVALID_POS;
 	int m_rootCol = INVALID_POS;
+
+	bool m_UseTicksToDelayDataFlowCapture = false; // To check if we want to use it or not (eg. in reconfiguration option we don't want it)
+	int	 m_remainingTicksUntilApplyCutSubtree = 0; // Copy from the root cell of the subtree that was cut
 };
 
 
