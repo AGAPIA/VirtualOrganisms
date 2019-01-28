@@ -351,13 +351,9 @@ struct Cell
 	float getCurrentBufferedCap() const { return m_bufferedData.getCurrentCap(); }
 	void resetCapacityUsedInSubtree();
 
-	void resetTicksToDelayDataFlowCapture() { m_remainingTicksToDelayDataFlowCapture = 0; }
-
-#if RUNMODE == DIRECTIONAL_MODE
 	float getCachedEnergyConsumedStat() const {
 		return m_lastEnergyConsumedStat;
 	}
-#endif
 
 	struct UniversalHash2D
 	{
@@ -388,16 +384,14 @@ private:
 							 const float oldBenefitValue, std::ostream& outDebugStream);
 
 	
-	// How many ticks is data capture disabled for this node because this is a root of a subtree changing its position
-	int m_remainingTicksToDelayDataFlowCapture = 0;
+	// How many ticks is data capture disabled for this not because this is a root of a subtree changing its position
+	int m_remainingTicksToDelayDataFlowCapture;
 	
 	// Current buffered data in this node
 	BufferedTrafficData m_bufferedData;
 
-#if RUNMODE == DIRECTIONAL_MODE
 	// The energy consumed by this subtree cached at last simTick call
 	float m_lastEnergyConsumedStat;
-#endif
 };
 
 #endif

@@ -267,8 +267,6 @@ void Simulator::doStepByStepSimulation(const bool writeHelperOutput, std::istrea
 			outStream << "##########################################################" << endl;
 		}
 
-		m_board.setUseDelayTicksDataFlowCapture(true); // use by default delay ticks data flow capture
-
 		inStream >> ev;
 
 		switch (ev)
@@ -359,10 +357,7 @@ void Simulator::doStepByStepSimulation(const bool writeHelperOutput, std::istrea
 			case 'R':
 			case 'r':
 			{
-				// We want only a reorganization here
-				m_board.setUseDelayTicksDataFlowCapture(false);
-
-				addBoardInHistory(&m_board);	
+				addBoardInHistory(&m_board);				
 				m_board.reorganize(outStream);
 				printBoard(outStream);
 			}

@@ -183,9 +183,9 @@ void Cell::reset(const bool resetSymbolToo /*= true*/)
 	m_boardView = nullptr;
 	m_remainingTicksToDelayDataFlowCapture = 0;
 	m_isRented = false;
+	m_lastEnergyConsumedStat = 0.0f;
 
 #if RUNMODE == DIRECTIONAL_MODE
-	m_lastEnergyConsumedStat = 0.0f;
 	m_cellType = CELL_NOTSET;
 #endif
 }
@@ -321,11 +321,6 @@ void Cell::onRootMsgReorganize()
 #else
 	assert(m_column == MAX_COLS - 1 && m_row == 0);	// Just a check for sanity :)
 #endif
-	// In the case we call reorganize and we still have a subtree that waiting to be applied
-	if (m_boardView->getUseTicksToDelayDataFlowCapture() && m_boardView->getRemainingTicksUntilApplyCutSubtree() > 0)
-	{
-		return;
-	}
 
 	// Allocate an array for results - TODO: optimize we should know easily how many nodes are in the tree 
 	std::vector<AvailablePosInfoAndDeltaScore> localBestResults;
@@ -457,19 +452,9 @@ void Cell::onMsgReorganizeEnd(int selectedRow, int selectedCol, const AvailableP
 	{
 		SubtreeInfo subtreeToMove;
 		m_boardView->cutSubtree(selectedRow, selectedCol, subtreeToMove);
-		if (!m_boardView->getUseTicksToDelayDataFlowCapture()) // We only make a reconfiguration then apply the subtree now
-		{
-			const bool res = m_boardView->tryApplySubtree(targetPosAndDir.row, targetPosAndDir.col, subtreeToMove, true, true); // double check
-			assert(res);
-		}
-		else
-		{
-			// The root decide about the cell that will have to delay some ticks data buffering since it will have to change his parent
-			m_boardView->m_board[selectedRow][selectedCol].m_remainingTicksToDelayDataFlowCapture = manhattanDist(TablePos(selectedRow, selectedCol), TablePos(targetPosAndDir.row, targetPosAndDir.col));
-			m_boardView->setRemainingTicksUntilApplyCutSubtree(m_boardView->m_board[selectedRow][selectedCol].m_remainingTicksToDelayDataFlowCapture);
-			m_boardView->m_SubtreeCut.set(targetPosAndDir, subtreeToMove, true); // Save the subtree to be applied later - only root cell will have it
-		}
-		
+		const bool res = m_boardView->tryApplySubtree(targetPosAndDir.row, targetPosAndDir.col, subtreeToMove, true, true); // double check
+		assert(res);
+
 		isBoardChanged = true;
 	}
 
@@ -481,17 +466,28 @@ void Cell::onMsgReorganizeEnd(int selectedRow, int selectedCol, const AvailableP
 
 	isBoardChanged |= analyzeElasticModel(*g_debugLogOutput);
 
-
 	// If the board was changed, discover the structure and broadcast it to everyone
 	if (isBoardChanged)
 	{
 		onMsgDiscoverStructure(m_row, m_column, 0);
 		onMsgBroadcastStructure(m_boardView);
 	}
+	
+	// If I´m the cell selected for move, i will have to delay some ticks data buffering since i have to change my parent
+	if (selectedRow == m_row && selectedCol == m_column)
+	{
+		m_remainingTicksToDelayDataFlowCapture = g_ticksToDelayDataFlowCaptureOnRestructure;
+	}
 }
 
 void Cell::captureDataFlow(const SimulationContext& simContext)
-{	
+{
+	if (m_remainingTicksToDelayDataFlowCapture > 0)
+	{
+		m_remainingTicksToDelayDataFlowCapture--;
+		return; 
+	}
+	
 	// Captures as much as it can from environment (if leaf) or from children if internal node	
 
 	// Doesn't matter if parents / or children update in parallel stuff, the most important thing is to not violate the flow constraint
@@ -618,9 +614,7 @@ void Cell::simulateTick_serial(const SimulationContext& simContext)
 	assert(m_cellType == CELL_EXTERIOR && "In directional mode, only the external cells can capture something");
 #endif
 
-#if RUNMODE == DIRECTIONAL_MODE
 	m_lastEnergyConsumedStat = 0.0f;
-#endif
 
 	// First ,simulate the children
 	Cell* childrenList[DIR_COUNT];
@@ -632,14 +626,12 @@ void Cell::simulateTick_serial(const SimulationContext& simContext)
 		if (child)
 		{
 			child->simulateTick_serial(simContext);
-#if RUNMODE == DIRECTIONAL_MODE
+
 			m_lastEnergyConsumedStat += child->m_lastEnergyConsumedStat;
-#endif
 		}
 	}
-#if RUNMODE == DIRECTIONAL_MODE
+
 	m_lastEnergyConsumedStat += g_costPerResource[m_symbol];
-#endif
 
 	// Then capture their data 
 	captureDataFlow(simContext);

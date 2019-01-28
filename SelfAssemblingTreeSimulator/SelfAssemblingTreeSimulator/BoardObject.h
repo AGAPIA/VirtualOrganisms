@@ -318,39 +318,6 @@ struct BoardObject
 
 	std::unordered_set<RentedResourceInfo> m_rentedResources;
 
-	// Subtree that was cut and should be applied after m_remainingTicksUntilApplyCutSubtree ticks
-	struct SubtreeCutInfo
-	{
-		SubtreeCutInfo(AvailablePosInfoAndDeltaScore _posAndScoreInfo = AvailablePosInfoAndDeltaScore(), SubtreeInfo _subtreeInfo = SubtreeInfo(), bool _isSubtreeCut = false)
-		{
-			posAndScoreInfo = _posAndScoreInfo;
-			subtreeInfo = _subtreeInfo;
-			isSubtreeCut = _isSubtreeCut;
-		}
-
-		void set(AvailablePosInfoAndDeltaScore _posAndScoreInfo , SubtreeInfo _subtreeInfo, bool _isSubtreeCut)
-		{
-			posAndScoreInfo = _posAndScoreInfo;
-			subtreeInfo = _subtreeInfo;
-			isSubtreeCut = _isSubtreeCut;
-		}
-
-		void reset()
-		{
-			isSubtreeCut = false;
-		}
-
-		AvailablePosInfoAndDeltaScore posAndScoreInfo;
-		SubtreeInfo subtreeInfo;
-		bool isSubtreeCut = false;
-	};
-
-	SubtreeCutInfo	m_SubtreeCut;
-	int  getRemainingTicksUntilApplyCutSubtree() { return m_remainingTicksUntilApplyCutSubtree; }
-	int  setRemainingTicksUntilApplyCutSubtree(int ticks) { return m_remainingTicksUntilApplyCutSubtree = ticks; }
-
-	void setUseDelayTicksDataFlowCapture(bool useDelayTicksDataFlowCapture) { m_UseTicksToDelayDataFlowCapture = useDelayTicksDataFlowCapture; }
-	bool getUseTicksToDelayDataFlowCapture() { return m_UseTicksToDelayDataFlowCapture; }
 private:
 
 #if RUNMODE == DIRECTIONAL_MODE
@@ -463,9 +430,6 @@ private:
 
 	int m_rootRow = INVALID_POS; 
 	int m_rootCol = INVALID_POS;
-
-	bool m_UseTicksToDelayDataFlowCapture = false; // To check if we want to use it or not (eg. in reconfiguration option we don't want it)
-	int	 m_remainingTicksUntilApplyCutSubtree = 0; // Copy from the root cell of the subtree that was cut
 };
 
 
