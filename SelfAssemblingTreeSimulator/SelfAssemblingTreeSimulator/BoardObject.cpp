@@ -641,6 +641,27 @@ void BoardObject::doDataFlowSimulation_serial(const int ticksToSimulate, const b
 		{
 			updateSourcesPower();
 		}
+
+		// Check if exist a subtree that should be applied
+		SubtreeCutInfo subtree = root->m_boardView->m_SubtreeCut;
+		if (!subtree.isSubtreeCut)
+		{
+			return;
+		}
+
+		if (m_remainingTicksUntilApplyCutSubtree == 0)
+		{
+			int row = subtree.posAndScoreInfo.row;
+			int col = subtree.posAndScoreInfo.col;
+			const bool res = root->m_boardView->tryApplySubtree(row, col, subtree.subtreeInfo, true, true); // double check
+			root->m_boardView->m_board[row][col].resetTicksToDelayDataFlowCapture();
+			root->m_boardView->m_SubtreeCut.reset();
+			assert(res);
+		}
+		else if (m_remainingTicksUntilApplyCutSubtree > 0)
+		{
+			m_remainingTicksUntilApplyCutSubtree--;
+		}
 	}
 }
 
@@ -3315,7 +3336,7 @@ void BoardObject::fillSimulationContext(SimulationContext& simContext) const
 
 		for (int i = 0; i < leafNodesCaptureIndirection.size(); i++)
 		{
-			auto& leafNode = leafNodesCapture[i];
+			auto& leafNode = leafNodesCapture[leafNodesCaptureIndirection[i]];
 			if (leafNode.remainingCap <= 0.0f)
 				continue;
 
