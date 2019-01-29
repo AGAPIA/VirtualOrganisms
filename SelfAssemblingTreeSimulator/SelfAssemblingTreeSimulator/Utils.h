@@ -12,10 +12,9 @@
 
 #include <unordered_map>
 #include <string>
-#include <cassert>
+#include <assert.h>
 #include <atomic>
-#include <climits>
-#include <cmath>
+#include <limits.h>
 
 using uint = unsigned int;
 #define MAX_ROWS 10 // For emodel use 20!
