@@ -3,7 +3,7 @@
 #include "Cell.h"
 
 extern int g_minPowerForWirelessSource;
-extern	int g_maxPowerForWirelessSource;
+extern int g_maxPowerForWirelessSource;
 
 int randRange(int min, int max)
 {
@@ -12,7 +12,11 @@ int randRange(int min, int max)
 
 bool floatEqual(const float val1, const float val2)
 {
+#ifdef _WIN32
 	return std::fabsf(val1 - val2) < EPSILON;
+#elif __linux__
+    return fabsf(val1 - val2) < EPSILON;
+#endif
 }
 
 float randUniform()
@@ -64,8 +68,8 @@ int manhattanDist(const TablePos& p1, const TablePos& p2)
 
 void trimCommentsAndWhiteSpaces(std::string& str)
 {
-	static char* whitespaces = " \t";
-	static char* comments = "//";
+	static const char* whitespaces = " \t";
+	static const char* comments = "//";
 
 	// Eliminate comments
 	const int commentPos = (int)str.find(comments);

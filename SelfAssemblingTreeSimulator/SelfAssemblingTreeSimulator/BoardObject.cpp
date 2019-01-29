@@ -9,7 +9,9 @@
 #include <set>
 
 #define NOMINMAX
+#ifdef _WIN32
 #include <windows.h>
+#endif
 
 using namespace std;
 
@@ -209,7 +211,7 @@ void BoardObject::updateInternalCellsInfo()
 		if (isHorizontal)
 		{
 			int colStart = prevInflexionPoint->col;
-			int colEnd = pos.col;
+			int colEnd   = pos.col;
 			if (colStart > colEnd)
 				std::swap(colStart, colEnd);
 
@@ -294,14 +296,14 @@ void BoardObject::getInflexionPointAndConnectMembrane(std::vector<TablePos>& out
 
 	Cell* prevCell = nullptr;
 	bool alreadyMetRoot = false;
-
+	
 	do
 	{
 		Cell* thisCell = &m_board[currPos.row][currPos.col];
 		thisCell->m_row = currPos.row;
 		thisCell->m_column = currPos.col;
 		// Reset prevs and follow links
-
+	
 
 		thisCell->m_cellType = CELL_MEMBRANE;
 
@@ -352,7 +354,7 @@ void BoardObject::getInflexionPointAndConnectMembrane(std::vector<TablePos>& out
 		const DIRECTION newDir = Cell::getDirectionFromSymbol(m_board[currPos.row][currPos.col].m_symbol);
 		if (newDir != currDir)
 		{
-
+			
 			currDir = newDir;
 			outInflexionPositions.push_back(currPos);
 		}
@@ -381,8 +383,8 @@ void BoardObject::internalCreateRowsLinks(const int middleCol, const int rowStar
 
 		//assert(startCell->symbol == '2' || startCell->symbol == '7');
 
-		const int numItemsInLeft = getOccupiedItemsOnRow(row, middleCol, true, true);
-		const int numItemsInRight = getOccupiedItemsOnRow(row, middleCol, false, true);
+		const int numItemsInLeft	= getOccupiedItemsOnRow(row, middleCol, true, true);
+		const int numItemsInRight	= getOccupiedItemsOnRow(row, middleCol, false, true);
 
 		// Solve Left (4 symbol)
 		{
@@ -431,8 +433,8 @@ void BoardObject::internalCreateColsLinks(const int middleRow, const int colMin,
 		startCell->m_column = col;
 		//assert(startCell->symbol == '4' || startCell->symbol == 'e');
 
-		const int numItemsUp = getOccupiedItemsOnCol(col, middleRow, false, true);
-		const int numItemsDown = getOccupiedItemsOnCol(col, middleRow, true, true);
+		const int numItemsUp	= getOccupiedItemsOnCol(col, middleRow, false, true);
+		const int numItemsDown	= getOccupiedItemsOnCol(col, middleRow, true, true);
 
 		// Generate Up (7 symbol)
 		{
@@ -493,7 +495,7 @@ void BoardObject::internalCreateLinks(Cell* prevCell, const DIRECTION dir, const
 	else if (dir == DIR_RIGHT)
 		prevCell->m_right = currCell;
 	else if (dir == DIR_UP)
-		prevCell->m_
+		prevCell->m_ 
 	else if (dir == DIR_DOWN)
 	*/
 
@@ -536,9 +538,9 @@ void BoardObject::copyDataFrom(const BoardObject& other)
 			m_board[i][j].m_boardView = this;
 		}
 
-	//#if RUNMODE == DIRECTIONAL_MODE
+//#if RUNMODE == DIRECTIONAL_MODE
 	setRootLocation(other.m_rootRow, other.m_rootCol);
-	//#endif
+//#endif
 
 	getRootCell()->initFlowStatistics(g_simulationTicksForDataFlowEstimation);
 
@@ -641,27 +643,6 @@ void BoardObject::doDataFlowSimulation_serial(const int ticksToSimulate, const b
 		{
 			updateSourcesPower();
 		}
-
-		// Check if exist a subtree that should be applied
-		SubtreeCutInfo subtree = root->m_boardView->m_SubtreeCut;
-		if (!subtree.isSubtreeCut)
-		{
-			return;
-		}
-
-		if (m_remainingTicksUntilApplyCutSubtree == 0)
-		{
-			int row = subtree.posAndScoreInfo.row;
-			int col = subtree.posAndScoreInfo.col;
-			const bool res = root->m_boardView->tryApplySubtree(row, col, subtree.subtreeInfo, true, true); // double check
-			root->m_boardView->m_board[row][col].resetTicksToDelayDataFlowCapture();
-			root->m_boardView->m_SubtreeCut.reset();
-			assert(res);
-		}
-		else if (m_remainingTicksUntilApplyCutSubtree > 0)
-		{
-			m_remainingTicksUntilApplyCutSubtree--;
-		}
 	}
 }
 
@@ -724,7 +705,7 @@ void BoardObject::simulateTick_serial(const bool considerForStatistics /* = true
 			// and add the flow to this node
 			float maxCapAllowed = memCell->getRemainingCap();
 			memCell->captureFromChildren(maxCapAllowed, CELL_EXTERIOR);
-		}
+		}		
 
 		// If no cap to donate further, continue
 		{
@@ -763,7 +744,7 @@ void BoardObject::simulateTick_serial(const bool considerForStatistics /* = true
 			}
 
 			// Try to send to next cell in the membrane if internal buffered flow wasn't consumed yet
-			{
+			{				
 				if (floatEqual(memCell->getCurrentBufferedCap(), 0.0f))
 					break;
 			}
@@ -905,7 +886,7 @@ bool BoardObject::isNumberOfCharactersGood() const
 	return false;
 }
 
-bool BoardObject::isCompliantWithRowColPatterns(int onlyTestRow, int onlyTestCol, TablePos* outWrongPos) const
+bool BoardObject::isCompliantWithRowColPatterns(int onlyTestRow, int onlyTestCol, TablePos* outWrongPos ) const
 {
 	// Check the language on rows
 	for (int row = 0; row < MAX_ROWS; row++)
@@ -1009,7 +990,7 @@ bool BoardObject::tryApplySubtree(const int row, const int col, const SubtreeInf
 		assert(isCoordinateValid(rowAp, colAp));
 
 		m_board[rowAp][colAp].setSymbol(offsetAndSymbol.symbol);
-
+		
 		if (offsetAndSymbol.isRented)
 		{
 			m_board[rowAp][colAp].setAsRented();
@@ -1086,7 +1067,7 @@ bool BoardObject::canPasteSubtreeAtPos_noLangCheck(const int targetRow, const in
 	const bool canGlueAbove = targetRow > 0 && m_board[targetRow - 1][targetCol].isFree() == false;
 	const bool canGlueRight = (targetCol < MAX_COLS - 1) && m_board[targetRow][targetCol + 1].isFree() == false;
 	const bool canGlueToOneSide = canGlueAbove || canGlueRight;
-
+	
 	if (isTargetCellFree == false || canGlueToOneSide == false)
 	{
 		return false;
@@ -1100,7 +1081,7 @@ bool BoardObject::canPasteSubtreeAtPos_noLangCheck(const int targetRow, const in
 
 		if (!isCoordinateValid(rowAp, colAp))
 			return false;
-
+		
 		if (m_board[rowAp][colAp].isFree() == false)
 			return false;
 	}
@@ -1112,14 +1093,14 @@ bool BoardObject::canPasteSubtreeAtPos_noLangCheck(const int targetRow, const in
 bool BoardObject::checkRow(const int row, const int startCol, const int endCol) const
 {
 	assert(isCoordinateValid(row, startCol) && isCoordinateValid(row, endCol) && startCol <= endCol);
-
+	
 	std::string testLocal;
 	testLocal.reserve(endCol - startCol + 2);
 	for (int colIter = startCol; colIter <= endCol; colIter++)
 	{
 		testLocal += m_board[row][colIter].m_symbol;
 	}
-
+	
 	const bool res = std::regex_match(testLocal.c_str(), g_rowRXExpr);
 	return res;
 }
@@ -1127,14 +1108,14 @@ bool BoardObject::checkRow(const int row, const int startCol, const int endCol) 
 bool BoardObject::checkCol(const int col, const int startRow, const int endRow) const
 {
 	assert(isCoordinateValid(startRow, col) && isCoordinateValid(endRow, col) && startRow <= endRow);
-
+	
 	std::string testLocal;
 	testLocal.reserve(endRow - startRow + 2);
 	for (int rowIter = startRow; rowIter <= endRow; rowIter++)
 	{
 		testLocal += m_board[rowIter][col].m_symbol;
 	}
-
+	
 	const bool res = std::regex_match(testLocal.c_str(), g_colRXExpr);
 	return res;
 }
@@ -1197,18 +1178,20 @@ void BoardObject::evaluatePositionsToMove(const int cellRow, const int cellCol, 
 
 void BoardObject::printBoard(std::ostream& outStream)
 {
+#ifdef _WIN32
 	HANDLE hstdout = GetStdHandle(STD_OUTPUT_HANDLE);
+#endif
 
 	outStream << "Current board: " << endl;
 
 	outStream << ' ' << ' ';
 	for (uint j = 0; j < MAX_COLS; j++)
-		outStream << ' ' << j % 10 << ' ';
+		outStream << ' ' << j%10 << ' ';
 
 	outStream << endl;
 	for (uint i = 0; i < MAX_ROWS; i++)
 	{
-		outStream << i % 10 << ' ';
+		outStream << i%10 << ' ';
 
 		for (uint j = 0; j < MAX_COLS; j++)
 		{
@@ -1223,23 +1206,41 @@ void BoardObject::printBoard(std::ostream& outStream)
 				const bool isInteriorTree = cellType == CELL_INTERIOR;
 				const bool isExteriorTree = cellType == CELL_EXTERIOR;
 				const bool isColorChanged = membraneCell || isInteriorTree || isExteriorTree;
-
+				
 				// Put red color if membrane
 				if (isColorChanged)
 				{
-					if (membraneCell)
+					if (membraneCell) {
+#ifdef _WIN32
 						SetConsoleTextAttribute(hstdout, 0x04);
-					else if (isExteriorTree)
+#elif __linux__
+                        outStream << "\033[1;31m";
+#endif
+                    } else if (isExteriorTree) {
+#ifdef _WIN32
 						SetConsoleTextAttribute(hstdout, 0x02);
-					else if (isInteriorTree)
+#elif __linux__
+                        outStream << "\033[1;32m";
+#endif
+                    } else if (isInteriorTree) {
+#ifdef _WIN32
 						SetConsoleTextAttribute(hstdout, 0x03);
+#elif __linux__
+                        outStream << "\033[1;36m";
+#endif
+                    }
 				}
 
 				outStream << ' ' << m_board[i][j].m_symbol << ' ';
 
 				// Revert back to black
-				if (isColorChanged)
-					SetConsoleTextAttribute(hstdout, 0x0F);
+				if (isColorChanged) {
+#ifdef _WIN32
+					SetConsoleTextAttribute(hstdout, 0x0F); 
+#elif __linux__
+                    outStream << "\033[0m";
+#endif
+                }
 			}
 		}
 
@@ -1378,19 +1379,19 @@ bool BoardObject::internalPropagateSourceEvent(const Cell::BroadcastEventType sr
 	bool resThis = false;
 	switch (srcEventType)
 	{
-	case Cell::EVENT_SOURCE_ADD:
-		resThis = cell->m_boardView->addSource(tablePos, source);
-		break;
-	case Cell::EVENT_SOURCE_MODIFY:
-		resThis = cell->m_boardView->modifySource(tablePos, source);
-		break;
-	case Cell::EVENT_SOURCE_REMOVE:
-		resThis = cell->m_boardView->removeSource(tablePos, allSources);
-		break;
-	default:
-		assert(false);
+		case Cell::EVENT_SOURCE_ADD:
+			resThis = cell->m_boardView->addSource(tablePos, source);
+			break;
+		case Cell::EVENT_SOURCE_MODIFY:
+			resThis = cell->m_boardView->modifySource(tablePos, source);
+			break;
+		case Cell::EVENT_SOURCE_REMOVE:
+			resThis = cell->m_boardView->removeSource(tablePos, allSources);
+			break;
+		default:
+			assert(false);
 	}
-
+	
 	return (resThis && childResuls);
 }
 
@@ -1629,7 +1630,7 @@ void BoardObject::ProduceItem(TablePos& nextPointer, Expression_Node::Iter& expr
 	// Always produce at least 5 items of each STAR to satisfy the neighb rule
 	// 
 	const Expression_Node* nextNode = exprIter.getNext();
-
+	
 	ExprMatchResult outResult;
 	Expression_Generator::internalGenerateRandom(*nextNode, 1/*limit*/, outResult, nullptr);
 }
@@ -1888,7 +1889,7 @@ void BoardObject::generateRowExpression(const int middleCol, const int maxAttemp
 
 		// Generate Left (4 symbol)
 		{
-			Cell* cellIter = startCell;
+			Cell* cellIter = startCell;		
 
 			for (int leftIter = 1; leftIter <= numItemsLeft; leftIter++)
 			{
@@ -1916,10 +1917,10 @@ void BoardObject::generateRowExpression(const int middleCol, const int maxAttemp
 }
 
 void BoardObject::generateDirectionalBoardModel(
-	Expression_Generator* m_rowGenerator,
-	Expression_Generator* m_colGenerator,
-	const int numMaxAtttempts,
-	const int depth, const int minMembraneSize, const int maxMembraneSize)
+					Expression_Generator* m_rowGenerator,
+					Expression_Generator* m_colGenerator, 
+					const int numMaxAtttempts, 
+					const int depth, const int minMembraneSize, const int maxMembraneSize)
 {
 	generateMembrane(minMembraneSize, maxMembraneSize);
 
@@ -2629,7 +2630,7 @@ bool BoardObject::generateRandomBoard(const int numDepthBranches, const int numS
 	assert(m_colGenerator && m_rowGenerator);
 
 	const int maxAttemptsForTree = 100;
-	for (int treeAttempt = 0; treeAttempt < maxAttemptsForTree; treeAttempt++)
+	for (int treeAttempt = 0 ; treeAttempt < maxAttemptsForTree; treeAttempt++)
 	{
 		reset(true);
 
@@ -2697,7 +2698,7 @@ bool BoardObject::generateRandomBoard(const int numDepthBranches, const int numS
 		// After these two steps everybody knows the distance to root and the number of branches below
 		Cell* root = getRootCell();
 		root->onMsgDiscoverStructure(root->m_row, root->m_column, 0);
-
+		
 		root->onRootMsgBroadcastStructure(this); // Root uses the global board !!!
 
 												 // Step 2.5: generate some random sources
@@ -2728,33 +2729,33 @@ bool BoardObject::optimizeMembrane_byCutRowCols()
 	float flowBenefit = INVALID_FLOW;
 	DIRECTION outDirToCut = DIR_COUNT;
 	const bool res = evaluateMembraneOptimization(outRowToCut, outColToCut, outDirToCut, flowBenefit);
-
+	
 	if (!res || flowBenefit == INVALID_FLOW)
 		return false;
-
+	
 
 	assert(((outRowToCut != INVALID_POS) + (outColToCut != INVALID_POS)) == 1);
-
+	
 	if (g_verboseBestGatheredSolutions)
 	{
 		(*g_debugLogOutput) << "### Best sol found for membrane CUT: " << " row: " << outRowToCut << " col: " << outColToCut << " dir: " << Cell::getDirString(outDirToCut) << " " << std::endl << " flow benefit " << flowBenefit << std::endl;
 	}
-
+	
 	// Perform definitive cut over this board
 	if (outRowToCut != INVALID_POS)
 	{
 		cutMembraneByRow(outRowToCut, outDirToCut, true);
 	}
-
+	
 	if (outColToCut != INVALID_POS)
 	{
 		cutMembraneByCol(outColToCut, outDirToCut, true);
 	}
-
+	
 	// With the new resources garbage collected try to add internal and external trees
 	expandInternalTrees();
 	expandExternalTrees();
-
+		
 	return true;
 }
 
@@ -2934,7 +2935,7 @@ void BoardObject::cutMembraneByCol(const int index, const DIRECTION dir, const b
 	}
 
 	updateRootLocation(newRootRow, newRootCol);
-
+	
 	if (definitive)
 	{
 		updateBoardAfterSymbolsInit();
@@ -2949,7 +2950,7 @@ const bool IsGoing_NorthWest(const TablePos& startPos, const TablePos& middlePos
 		return false;
 
 	// Going west ?
-	if (middlePos.col >= endPos.col
+	if (middlePos.col >= endPos.col 
 		|| middlePos.row != endPos.row)
 		return false;
 
@@ -3075,7 +3076,7 @@ bool BoardObject::evaluateBestCornerCutChance(const std::vector<TablePos>& infle
 
 		// Check side
 		if (IsGoing_NorthWest(startP, middleP, endP))
-		{
+		{			
 			// Find the best corner desc here. Try all possible deviations
 			// Then do the cut and compare 
 			CutCornerDescription localBestCornerDesc;
@@ -3119,7 +3120,7 @@ bool BoardObject::evaluateBestCornerCutChance(const std::vector<TablePos>& infle
 
 					delete newBoard;
 				}
-			}
+			}			
 		}
 
 		// TODO: Add the code for others
@@ -3218,7 +3219,7 @@ void BoardObject::gatherLeafNodes(const Cell* currentCell, std::vector<TablePos>
 	{
 		Cell* childrenList[DIR_COUNT];
 		currentCell->fillChildrenList(childrenList);
-
+		
 		for (int childIter = 0; childIter < DIR_COUNT; childIter++)
 		{
 			Cell* cell = childrenList[childIter];
@@ -3287,18 +3288,18 @@ void BoardObject::fillSimulationContext(SimulationContext& simContext) const
 	for (int i = 0; i < leafNodesCapture.size(); i++) leafNodesCaptureIndirection[i] = i;
 
 	// Define the lambda function used to sort and shuffle. It will be used at each iteration through the sources
-	auto SortAndShuffleLeafNodesFunc = [&](const TablePos& srcPos) {
+	auto SortAndShuffleLeafNodesFunc = [&](const TablePos& srcPos){
 		// Sort by distance to source using a functor
 		struct LeafToSrcFunctor
 		{
-			LeafToSrcFunctor(const TablePos& srcPos, LeafNodsCaptureInfoArray& refInfoArray)
-				: m_srcPos(srcPos),
-				m_refInfoArray(refInfoArray)
-			{}
+			LeafToSrcFunctor(const TablePos& srcPos, LeafNodsCaptureInfoArray& refInfoArray) 
+				:	m_srcPos(srcPos), 
+					m_refInfoArray(refInfoArray) 
+				{}
 
 			bool operator()(int a, int b) const
-			{
-				return manhattanDist(m_srcPos, m_refInfoArray[a].pos) < manhattanDist(m_srcPos, m_refInfoArray[b].pos);
+			{ 
+				return manhattanDist(m_srcPos, m_refInfoArray[a].pos) < manhattanDist(m_srcPos, m_refInfoArray[b].pos); 
 			}
 
 		private:
@@ -3336,7 +3337,7 @@ void BoardObject::fillSimulationContext(SimulationContext& simContext) const
 
 		for (int i = 0; i < leafNodesCaptureIndirection.size(); i++)
 		{
-			auto& leafNode = leafNodesCapture[leafNodesCaptureIndirection[i]];
+			auto& leafNode = leafNodesCapture[i];
 			if (leafNode.remainingCap <= 0.0f)
 				continue;
 
@@ -3346,9 +3347,9 @@ void BoardObject::fillSimulationContext(SimulationContext& simContext) const
 			// Get the minimum value between: source remaining capacity, how much this leaf node can subtract from source and the leaf node's remaining capacity
 			const float actualCapture = std::min(maxCapToGetFromSrc, leafNode.remainingCap);
 			const float capFromSrc = std::min(actualCapture, srcRemainingCap);
-
+			
 			// Extract the data flow from source and add it to the leaf node
-			leafNode.onAddCapture(capFromSrc);
+			leafNode.onAddCapture(capFromSrc);			
 			srcRemainingCap -= capFromSrc;
 			assert(srcRemainingCap >= 0.0f);
 
@@ -3365,14 +3366,14 @@ void BoardObject::fillSimulationContext(SimulationContext& simContext) const
 		simContext.mLeafNodeToCaptureValue.insert(std::make_pair(leafNode.pos, leafNode.currentIterCapSum));
 	}
 
-	/*
-if (isLeaf())
-{
-	assert(isCoordinateValid(m_row, m_column));
-	const float maxFlowFromEnvironment = m_boardView->computeScoreForLeaf(TablePos(m_row, m_column), m_distanceToRoot, true);
-	const float capToAdd = std::min(maxFlowFromEnvironment, capRemaining);
-	m_bufferedData.add(capToAdd);
-}*/
+		/*
+	if (isLeaf())
+	{
+		assert(isCoordinateValid(m_row, m_column));
+		const float maxFlowFromEnvironment = m_boardView->computeScoreForLeaf(TablePos(m_row, m_column), m_distanceToRoot, true);
+		const float capToAdd = std::min(maxFlowFromEnvironment, capRemaining);
+		m_bufferedData.add(capToAdd);
+	}*/
 }
 
 void BoardObject::addRentedResource(const char symbol, const TablePos& tablePos)
