@@ -2,6 +2,7 @@
 #include <fstream>
 #include <float.h>
 #include <sstream>
+#include <random>
 
 using namespace std;
 
@@ -22,6 +23,12 @@ extern int FIXED_SEED;
 std::vector<char> g_allSymbolsSet;
 extern float g_costPerResource[];
 extern std::ostream* g_debugLogOutput;
+
+extern double g_variationDistribution;
+extern int g_numberOfTicksOnDay;
+
+// Returns a float between 0 & 1
+#define RANDOM_NUM      ((float)rand()/(RAND_MAX+1))
 
 Simulator::Simulator(const std::string rowExpr, std::string columnExpr, const int speedOnConduct)
 	: m_speedOnConduct(speedOnConduct)
@@ -492,14 +499,36 @@ struct LogStep
 bool Simulator::autoSimulate(const int numSteps, int minPower, int maxPower, const char* resultsFileName)
 {
 	ofstream outFile("result.txt", std::ofstream::out);
+	
 	if (outFile.is_open() == false)
 	{
 		assert("can't open the results file ! Is it opened or something ?");
 		return false;
 	}
 
+	ofstream outCSVFile;
+	outCSVFile.open("Sources.csv");
+	if (outCSVFile.is_open() == false)
+	{
+		assert("can't open the Sources.csv file to write the info about the sources! Is it opened or something ?");
+		return false;
+	}
+
+	outCSVFile << "Tick" << "," << "Day" << "," << "Tick of day" << "," << "Source Position" << "," << "Power Position" << endl;
+
+	m_board.setUseDelayTicksDataFlowCapture(true); // use by default delay ticks data flow capture
+
+	int day, tickOfDay;
 	for (int i = 0; i < numSteps; i++)
 	{
+		// Calculate the current position of the sun
+		day = i / g_numberOfTicksOnDay;
+		tickOfDay = i % g_numberOfTicksOnDay;
+		int sunRow = MAX_ROWS / 2;
+		int sunCol = tickOfDay / (g_numberOfTicksOnDay / MAX_COLS);
+		m_sunPos = TablePos(sunRow, sunCol);
+		// ----------------------------------
+
 		LogStep logStep(i);
 
 		// TODO: generate events 
@@ -511,15 +540,17 @@ bool Simulator::autoSimulate(const int numSteps, int minPower, int maxPower, con
 		{
 			if (choice <= 0)
 			{
-				doDataFlowSimulation_serial(false, outFile);
+				doDataFlowSimulation_serial(false, outFile); // [TODO-MIRUNA] m_board.doDataFlowSimulation_serial(1); ?? because of g_simulationTicksForDataFlowEstimation
 			}
 			continue;
 		}
 		// 40% for reorganization
 		else if (choice <= 7)
 		{
-			m_root->onRootMsgReorganize();
-			logStep.isReorganization = true;
+			if (!(logStep.isReorganization = m_root->onRootMsgReorganize())) // Don't do another reorganization if there is one in progress but simulate the current tick
+			{
+				m_board.doDataFlowSimulation_serial(1);
+			}
 		}
 		else // 30% source events
 		{
@@ -529,8 +560,24 @@ bool Simulator::autoSimulate(const int numSteps, int minPower, int maxPower, con
 				SourceInfo src;
 				float newPower = (float)randRange(minPower, maxPower);
 				src.overridePower(newPower);
-				TablePos pos(randRange(0, MAX_ROWS - 1), randRange(0, MAX_COLS - 1));
+				TablePos pos = getSourcePosByNormalDistribution(); 
+				outCSVFile << i << "," << day << "," << tickOfDay << "," << std::string("(" + std::to_string(pos.row) + std::string("; ") + std::to_string(pos.col) + ")") << "," << newPower << endl;
 
+				//TablePos(randRange(0, MAX_ROWS - 1), randRange(0, MAX_COLS - 1)); // [TODO-MRIUNA] gaussian - media unde bate soarele si cat mai in centru hartii
+				
+				// variation-cat vreau - niste factori tunabili in config.ini
+				// de simulta distrubutia si de vazut ca merge!
+				// de salvata toate [sursele - power - locatie in csv care au aparut in timp]
+				// in python - matplotlib - un grafic unde au fost sursele intre ticii x si y
+
+				// task 3: de marit timpul eg de la 1 la 1000
+				// sa rulez simulatorul / un parametru care sa stocheze sursele sau nu
+				// vreau sa prezic unde sunt sursele - RL - estimez unde o sa fie sursele  ca sa fac reconfigurare in zona aia
+				// 1. unde o sa fie sursele : cat eis unde - o lista (sursa, power)
+				// tre sa testez : sa fac o cautare intr-un subsatiu - monte carlo
+				// stiind ca astea o safie sursele daca fac o reconfigurare aici -> facem modificarea dinainte
+				// timpul ca parametru in cazul in care se ia 
+				//  predictible reorganization - cu predictia scoate un rezultat mai bun
 				addSource(pos, src);
 
 				logStep.isAddedSource = true;
@@ -1013,4 +1060,60 @@ void Simulator::gatherAllDistinctSymbols(std::vector<char>& symbols)
 	}
 }
 
+TablePos Simulator::getSourcePosByNormalDistribution()
+{
+	double mean = 0.0f; // define between 0 and MAX_COLS depends on the position related by sun
+	mean = getSunPosition().col;
+
+	std::default_random_engine generator;
+	std::normal_distribution<double> distribution(mean, g_variationDistribution);
+
+	double distributionBoard[MAX_COLS]= { 0 };
+	int nExperiments = 1000;
+	int nStars = 100; // Maximum number of stars to distribute
+	for (int i = 0; i < nExperiments; i++)
+	{
+		double number = distribution(generator);
+		if (number >= 0.0 && number <= MAX_ROWS)
+		{
+			distributionBoard[int(number)]++;
+		}
+	}
+
+	// For debug to see the distribution
+	for (int i = 0; i < 10; ++i) 
+	{
+		std::cout << i << "-" << (i + 1) << ": ";
+		std::cout << std::string((distributionBoard[i]*nStars)/nExperiments, '*') << std::endl;
+	}
+
+	int totalFitness = 0;
+	for (int i = 0; i < 10; ++i)
+	{
+		totalFitness += distributionBoard[i];
+	}
+
+	// Roulette wheel selection
+	double slice = (double) (RANDOM_NUM * totalFitness);
+	double offset = 0.0;
+	int row = 0; // found the best row
+	TablePos pick = TablePos();
+
+	for (int i = 0; i < MAX_COLS; i++)
+	{
+		offset += distributionBoard[i];
+		if (offset >= slice)
+		{
+			pick = TablePos(getSunPosition().row, i);
+			break;
+		}
+	}
+	
+	return pick;
+}
+
+TablePos Simulator::getSunPosition()
+{
+	return m_sunPos;
+}
 

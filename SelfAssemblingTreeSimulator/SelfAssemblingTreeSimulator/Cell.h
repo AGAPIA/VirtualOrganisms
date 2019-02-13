@@ -291,7 +291,8 @@ struct Cell
 	void onRootMsgBroadcastStructure(BoardObject* structure);
 	void onMsgDiscoverStructure(int currRow, int currCol, int depth);
 	void onMsgReorganizeStart(std::vector<AvailablePosInfoAndDeltaScore>& output); // Called to reorganize the tree for better performance | On other nodes than root
-	void onRootMsgReorganize(); // Called to reorganize the tree for better performance | Root only !
+	bool onRootMsgReorganize(); // Called to reorganize the tree for better performance | Root only !
+								// Returns false if there is another reorganization in progress - for simulator/simulation purpose
 								//----------------------------------------------
 
 	void onMsgReorganizeEnd(int selectedRow, int selectedCol, const AvailablePosInfoAndDeltaScore& targetPosAndDir); // Called only on ROOT !

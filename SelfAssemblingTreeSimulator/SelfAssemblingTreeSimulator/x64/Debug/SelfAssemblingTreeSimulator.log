@@ -1,2 +1,4 @@
-﻿  Cell.cpp
-  SelfAssemblingTreeSimulator.vcxproj -> C:\Users\CiprianIonutPaduraru\Documents\GitHub\VirtualOrganisms\SelfAssemblingTreeSimulator\x64\Debug\SelfAssemblingTreeSimulator.exe
+﻿  SimulatorBoard.cpp
+c:\users\ciprianionutpaduraru\source\repos\agapia\virtualorganisms\selfassemblingtreesimulator\selfassemblingtreesimulator\simulatorboard.cpp(1087): warning C4244: 'argument': conversion from 'double' to 'const unsigned __int64', possible loss of data
+c:\users\ciprianionutpaduraru\source\repos\agapia\virtualorganisms\selfassemblingtreesimulator\selfassemblingtreesimulator\simulatorboard.cpp(1093): warning C4244: '+=': conversion from 'double' to 'int', possible loss of data
+  SelfAssemblingTreeSimulator.vcxproj -> C:\Users\CiprianIonutPaduraru\source\repos\AGAPIA\VirtualOrganisms\SelfAssemblingTreeSimulator\x64\Debug\SelfAssemblingTreeSimulator.exe

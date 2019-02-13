@@ -1,15 +1,9 @@
-﻿  BoardObject.cpp
-  Cell.cpp
-  main.cpp
-c:\users\ciprianionutpaduraru\documents\github\virtualorganisms\selfassemblingtreesimulator\selfassemblingtreesimulator\main.cpp(164): warning C4996: 'strdup': The POSIX name for this item is deprecated. Instead, use the ISO C and C++ conformant name: _strdup. See online help for details.
-  c:\program files (x86)\windows kits\10\include\10.0.17134.0\ucrt\string.h(536): note: see declaration of 'strdup'
-c:\users\ciprianionutpaduraru\documents\github\virtualorganisms\selfassemblingtreesimulator\selfassemblingtreesimulator\main.cpp(165): warning C4996: 'strdup': The POSIX name for this item is deprecated. Instead, use the ISO C and C++ conformant name: _strdup. See online help for details.
-  c:\program files (x86)\windows kits\10\include\10.0.17134.0\ucrt\string.h(536): note: see declaration of 'strdup'
-  SimulatorBoard.cpp
-  Utils.cpp
+﻿  SimulatorBoard.cpp
+c:\users\ciprianionutpaduraru\source\repos\agapia\virtualorganisms\selfassemblingtreesimulator\selfassemblingtreesimulator\simulatorboard.cpp(1087): warning C4244: 'argument': conversion from 'double' to 'const unsigned __int64', possible loss of data
+c:\users\ciprianionutpaduraru\source\repos\agapia\virtualorganisms\selfassemblingtreesimulator\selfassemblingtreesimulator\simulatorboard.cpp(1093): warning C4244: '+=': conversion from 'double' to 'int', possible loss of data
   Generating code
-  3318 of 3318 functions (100.0%) were compiled.
-    1240 functions were new in current compilation
-    0 functions had inline decision re-evaluated but remain unchanged
+  46 of 3395 functions ( 1.4%) were compiled, the rest were copied from previous compilation.
+    16 functions were new in current compilation
+    177 functions had inline decision re-evaluated but remain unchanged
   Finished generating code
-  SelfAssemblingTreeSimulator.vcxproj -> C:\Users\CiprianIonutPaduraru\Documents\GitHub\VirtualOrganisms\SelfAssemblingTreeSimulator\x64\Release\SelfAssemblingTreeSimulator.exe
+  SelfAssemblingTreeSimulator.vcxproj -> C:\Users\CiprianIonutPaduraru\source\repos\AGAPIA\VirtualOrganisms\SelfAssemblingTreeSimulator\x64\Release\SelfAssemblingTreeSimulator.exe

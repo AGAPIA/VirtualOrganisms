@@ -94,6 +94,11 @@ private:
 
 	int m_speedOnConduct;
 	//int m_speedWithoutConduct;
+
+	TablePos m_sunPos;
+
+	TablePos getSourcePosByNormalDistribution();
+	TablePos getSunPosition();
 };
 
 

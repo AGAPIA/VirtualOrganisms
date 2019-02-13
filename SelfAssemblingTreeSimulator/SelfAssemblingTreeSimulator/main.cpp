@@ -23,7 +23,7 @@ bool variableSourcesPower = false;
 bool initializeFromFile = true;
 char *fileToInitializeFrom = "in.txt";
 char *resultsFileName = "results.txt";
-int numStepsOnAutoSimulator = 0; // 1000;
+int numStepsOnAutoSimulator = 1000;
 int g_minPowerForWirelessSource = 10;
 int g_maxPowerForWirelessSource = 1000;
 int g_speedOnConduct = 10;
@@ -51,6 +51,10 @@ float g_benefitPerUnitOfFlow = 1.0f;
 
 int g_powerChangeFrequency = 10;
 float g_maxPowerVelocityPerTick = 50.0f;
+
+double g_variationDistribution = 1.0f;
+int g_numberOfTicksOnDay = 30;
+int g_radiusOfSun = 3;
 
 std::ostream* g_debugLogOutput;
 
@@ -163,7 +167,7 @@ void readInput(const char* configFileName)
 		else if (key == "initializeFromFile") { initializeFromFile = std::stoi(value) == 1 ? true : false; }
 		else if (key == "fileToInitializeFrom") { fileToInitializeFrom = strdup(value.c_str()); }
 		else if (key == "resultsFileName") { resultsFileName = strdup(value.c_str()); }
-		else if (key == "numStepsOnAutoSimulator") { numStepsOnAutoSimulator  = std::stoi(value); }
+		else if (key == "numStepsOnAutoSimulator") { numStepsOnAutoSimulator = std::stoi(value); }
 		else if (key == "minPowerForWirelessSource") { g_minPowerForWirelessSource = std::stoi(value); }
 		else if (key == "maxPowerForWirelessSource") { g_maxPowerForWirelessSource = std::stoi(value); }
 		else if (key == "minNodesOnRandomTree") { g_minNodesOnRandomTree = std::stoi(value); }
@@ -174,10 +178,10 @@ void readInput(const char* configFileName)
 		else if (key == "g_verboseElasticModel_Results") { g_verboseElasticModel_Results = std::stoi(value) == 1 ? true : false; }
 		else if (key == "g_elasticModelEnabled") { g_elasticModelEnabled = std::stoi(value) == 1 ? true : false; }
 		else if (key == "g_costPerResource") { processCostPerResource(value); }
-		else if (key == "g_benefitPerUnitOfFlow") { g_benefitPerUnitOfFlow = std::stof(value); }		
+		else if (key == "g_benefitPerUnitOfFlow") { g_benefitPerUnitOfFlow = std::stof(value); }
 		else if (key == "g_maxFlowPerCell") { g_maxFlowPerCell = std::stoi(value); }
-		else if (key == "g_ticksToDelayDataFlowCaptureOnRestructure"){ g_ticksToDelayDataFlowCaptureOnRestructure = std::stoi(value); }
-		else if (key == "g_simulationTicksForDataFlowEstimation")  { g_simulationTicksForDataFlowEstimation = std::stoi(value); }
+		else if (key == "g_ticksToDelayDataFlowCaptureOnRestructure") { g_ticksToDelayDataFlowCaptureOnRestructure = std::stoi(value); }
+		else if (key == "g_simulationTicksForDataFlowEstimation") { g_simulationTicksForDataFlowEstimation = std::stoi(value); }
 		else if (key == "numSourcesOnRandomBoard") { g_numSourcesOnRandomBoard = std::stoi(value); }
 		else if (key == "numOptimalScenarioSimulations") { g_numOptimalScenarioSimulations = std::stoi(value); }
 		else if (key == "simulateOptimalVsRandomReconfigScenarios") { g_simulateOptimalVsRandomReconfigScenarios = std::stoi(value); }
@@ -189,6 +193,9 @@ void readInput(const char* configFileName)
 		else if (key == "g_maxResourcesToRent") { g_maxResourcesToRent = std::stoi(value); }
 		else if (key == "useEModel") { g_useEModel = std::stoi(value); }
 		else if (key == "g_energyLossThreshold") { g_energyLossThreshold = std::stof(value); }
+		else if (key == "g_variationDistribution") { g_variationDistribution = std::stof(value); }
+		else if (key == "g_numberOfTicksOnDay") { g_numberOfTicksOnDay = std::stof(value); }
+		else if (key == "g_radiusOfSun") { g_radiusOfSun = std::stof(value); }
 		else
 		{
 			ostringstream strErr;

@@ -28,7 +28,7 @@ extern int g_maxResourcesToRent;
 
 extern bool g_verboseLocalSolutions;
 extern bool g_verboseBestGatheredSolutions;
-extern float g_energyLossThreshold;;
+extern float g_energyLossThreshold;
 
 extern std::ostream* g_debugLogOutput;
 
@@ -649,18 +649,18 @@ void BoardObject::doDataFlowSimulation_serial(const int ticksToSimulate, const b
 			return;
 		}
 
-		if (m_remainingTicksUntilApplyCutSubtree == 0)
+		if (m_remainingTicksUntilApplyCutSubtree > 0)
 		{
-			int row = subtree.posAndScoreInfo.row;
-			int col = subtree.posAndScoreInfo.col;
-			const bool res = root->m_boardView->tryApplySubtree(row, col, subtree.subtreeInfo, true, true); // double check
-			root->m_boardView->m_board[row][col].resetTicksToDelayDataFlowCapture();
-			root->m_boardView->m_SubtreeCut.reset();
-			assert(res);
-		}
-		else if (m_remainingTicksUntilApplyCutSubtree > 0)
-		{
-			m_remainingTicksUntilApplyCutSubtree--;
+			if (--m_remainingTicksUntilApplyCutSubtree == 0)
+			{
+				int row = subtree.posAndScoreInfo.row;
+				int col = subtree.posAndScoreInfo.col;
+				const bool res = root->m_boardView->tryApplySubtree(row, col, subtree.subtreeInfo, true, true); // double check
+				assert(res && "[BoardObject::doDataFlowSimulation_serial] Couldn't apply the subtree cut!");
+
+				root->m_boardView->m_board[row][col].resetTicksToDelayDataFlowCapture();
+				root->m_boardView->m_SubtreeCut.reset();
+			}
 		}
 	}
 }

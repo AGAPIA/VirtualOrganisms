@@ -314,7 +314,7 @@ void Cell::onMsgDiscoverStructure(int currRow, int currCol, int depth)
 #endif
 }
 
-void Cell::onRootMsgReorganize()
+bool Cell::onRootMsgReorganize()
 {
 #if RUNMODE == DIRECTIONAL_MODE
 	assert(m_column == g_247eModelRootCol && m_row == g_247eModelRootRow);
@@ -322,9 +322,10 @@ void Cell::onRootMsgReorganize()
 	assert(m_column == MAX_COLS - 1 && m_row == 0);	// Just a check for sanity :)
 #endif
 	// In the case we call reorganize and we still have a subtree that waiting to be applied
+	// Only in a simulation should be true
 	if (m_boardView->getUseTicksToDelayDataFlowCapture() && m_boardView->getRemainingTicksUntilApplyCutSubtree() > 0)
 	{
-		return;
+		return false;
 	}
 
 	// Allocate an array for results - TODO: optimize we should know easily how many nodes are in the tree 
@@ -397,6 +398,8 @@ void Cell::onRootMsgReorganize()
 		assert(isCoordinateValid(bestRes.selectedRow, bestRes.selectedColumn) && "It looks like the selected row/column for restructuring has failed to fill correctly. There is a bug !");
 		onMsgReorganizeEnd(bestRes.selectedRow, bestRes.selectedColumn, bestRes);
 	}
+
+	return true;
 }
 
 void Cell::onMsgReorganizeStart(std::vector<AvailablePosInfoAndDeltaScore>& output)
