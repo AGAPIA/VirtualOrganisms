@@ -54,7 +54,8 @@ float g_maxPowerVelocityPerTick = 50.0f;
 
 double g_variationDistribution = 1.0f;
 int g_numberOfTicksOnDay = 30;
-int g_radiusOfSun = 3;
+bool g_outputCSVFileBestSourcesInTime = false;
+bool g_debugSourceEventAutosimulator = false;
 
 std::ostream* g_debugLogOutput;
 
@@ -195,7 +196,8 @@ void readInput(const char* configFileName)
 		else if (key == "g_energyLossThreshold") { g_energyLossThreshold = std::stof(value); }
 		else if (key == "g_variationDistribution") { g_variationDistribution = std::stof(value); }
 		else if (key == "g_numberOfTicksOnDay") { g_numberOfTicksOnDay = std::stof(value); }
-		else if (key == "g_radiusOfSun") { g_radiusOfSun = std::stof(value); }
+		else if (key == "g_outputCSVFileBestSourcesInTime") { g_outputCSVFileBestSourcesInTime = std::stoi(value); }
+		else if (key == "g_debugSourceEventAutosimulator") { g_debugSourceEventAutosimulator = std::stoi(value); }
 		else
 		{
 			ostringstream strErr;

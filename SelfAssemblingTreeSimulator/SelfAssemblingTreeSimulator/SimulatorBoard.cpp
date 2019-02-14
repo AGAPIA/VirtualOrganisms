@@ -26,6 +26,8 @@ extern std::ostream* g_debugLogOutput;
 
 extern double g_variationDistribution;
 extern int g_numberOfTicksOnDay;
+extern bool g_outputCSVFileBestSourcesInTime;
+extern bool g_debugSourceEventAutosimulator;
 
 // Returns a float between 0 & 1
 #define RANDOM_NUM      ((float)rand()/(RAND_MAX+1))
@@ -499,22 +501,15 @@ struct LogStep
 bool Simulator::autoSimulate(const int numSteps, int minPower, int maxPower, const char* resultsFileName)
 {
 	ofstream outFile("result.txt", std::ofstream::out);
-	
-	if (outFile.is_open() == false)
-	{
-		assert("can't open the results file ! Is it opened or something ?");
-		return false;
-	}
+	assert(outFile.is_open() == false && "can't open the results file ! Is it opened or something ?");
 
-	ofstream outCSVFile;
-	outCSVFile.open("Sources.csv");
-	if (outCSVFile.is_open() == false)
-	{
-		assert("can't open the Sources.csv file to write the info about the sources! Is it opened or something ?");
-		return false;
-	}
-
-	outCSVFile << "Tick" << "," << "Day" << "," << "Tick of day" << "," << "Source Position" << "," << "Power Position" << endl;
+    ofstream outCSVFile;
+    if (g_outputCSVFileBestSourcesInTime)
+    {
+        outCSVFile.open("Sources.csv");
+        assert(outCSVFile.is_open() == false && "can't open the Sources.csv file to write the info about the sources! Is it opened or something ?");
+        outCSVFile << "Tick" << "," << "Day" << "," << "Tick of day" << "," << "Source Position" << "," << "Source Power" << endl;
+    }
 
 	m_board.setUseDelayTicksDataFlowCapture(true); // use by default delay ticks data flow capture
 
@@ -561,23 +556,26 @@ bool Simulator::autoSimulate(const int numSteps, int minPower, int maxPower, con
 				float newPower = (float)randRange(minPower, maxPower);
 				src.overridePower(newPower);
 				TablePos pos = getSourcePosByNormalDistribution(); 
-				outCSVFile << i << "," << day << "," << tickOfDay << "," << std::string("(" + std::to_string(pos.row) + std::string("; ") + std::to_string(pos.col) + ")") << "," << newPower << endl;
-
+                if (g_outputCSVFileBestSourcesInTime)
+                {
+                    outCSVFile << i << "," << day << "," << tickOfDay << "," << std::string("(" + std::to_string(pos.row) + std::string("; ") + std::to_string(pos.col) + ")") << "," << newPower << endl;
+                }
 				//TablePos(randRange(0, MAX_ROWS - 1), randRange(0, MAX_COLS - 1)); // [TODO-MRIUNA] gaussian - media unde bate soarele si cat mai in centru hartii
 				
 				// variation-cat vreau - niste factori tunabili in config.ini
-				// de simulta distrubutia si de vazut ca merge!
-				// de salvata toate [sursele - power - locatie in csv care au aparut in timp]
+				// de simulat distrubutia si de vazut ca merge!
+				// de salvat toate [sursele - power - locatie in csv care au aparut in timp]
 				// in python - matplotlib - un grafic unde au fost sursele intre ticii x si y
 
 				// task 3: de marit timpul eg de la 1 la 1000
 				// sa rulez simulatorul / un parametru care sa stocheze sursele sau nu
-				// vreau sa prezic unde sunt sursele - RL - estimez unde o sa fie sursele  ca sa fac reconfigurare in zona aia
-				// 1. unde o sa fie sursele : cat eis unde - o lista (sursa, power)
-				// tre sa testez : sa fac o cautare intr-un subsatiu - monte carlo
-				// stiind ca astea o safie sursele daca fac o reconfigurare aici -> facem modificarea dinainte
+				// vreau sa prezic unde sunt sursele - RL - estimez unde o sa fie sursele ca sa fac reconfigurare in zona aia
+				// 1. unde o sa fie sursele : cate sunt, unde - o lista (sursa, power)
+				// Testare : sa fac o cautare intr-un subsatiu - monte carlo
+				// stiind ca astea o sa fie sursele daca fac o reconfigurare aici -> facem modificarea dinainte
 				// timpul ca parametru in cazul in care se ia 
-				//  predictible reorganization - cu predictia scoate un rezultat mai bun
+				// predictible reorganization - cu predictia scoate un rezultat mai bun?
+
 				addSource(pos, src);
 
 				logStep.isAddedSource = true;
@@ -1068,7 +1066,7 @@ TablePos Simulator::getSourcePosByNormalDistribution()
 	std::default_random_engine generator;
 	std::normal_distribution<double> distribution(mean, g_variationDistribution);
 
-	double distributionBoard[MAX_COLS]= { 0 };
+	int distributionBoard[MAX_COLS]= { 0 };
 	int nExperiments = 1000;
 	int nStars = 100; // Maximum number of stars to distribute
 	for (int i = 0; i < nExperiments; i++)
@@ -1079,13 +1077,16 @@ TablePos Simulator::getSourcePosByNormalDistribution()
 			distributionBoard[int(number)]++;
 		}
 	}
-
-	// For debug to see the distribution
-	for (int i = 0; i < 10; ++i) 
-	{
-		std::cout << i << "-" << (i + 1) << ": ";
-		std::cout << std::string((distributionBoard[i]*nStars)/nExperiments, '*') << std::endl;
-	}
+    if (g_debugSourceEventAutosimulator)
+    {
+        // For debug to see the distribution
+        for (int i = 0; i < 10; ++i)
+        {
+            std::cout << i << "-" << (i + 1) << ": ";
+            std::cout << std::string((distributionBoard[i] * nStars) / nExperiments, '*') << std::endl;
+        }
+    }
+	
 
 	int totalFitness = 0;
 	for (int i = 0; i < 10; ++i)
@@ -1108,12 +1109,12 @@ TablePos Simulator::getSourcePosByNormalDistribution()
 			break;
 		}
 	}
+
+    if (g_debugSourceEventAutosimulator)
+    {
+        std::cout << std::string("Source Position : (" + std::to_string(pick.row) + std::string("; ") + std::to_string(pick.col) + ")") << endl;
+        std::cout << endl << endl;
+    }
 	
 	return pick;
 }
-
-TablePos Simulator::getSunPosition()
-{
-	return m_sunPos;
-}
-

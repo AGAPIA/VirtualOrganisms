@@ -98,7 +98,7 @@ private:
 	TablePos m_sunPos;
 
 	TablePos getSourcePosByNormalDistribution();
-	TablePos getSunPosition();
+    TablePos getSunPosition() { return m_sunPos; }
 };
 
 
