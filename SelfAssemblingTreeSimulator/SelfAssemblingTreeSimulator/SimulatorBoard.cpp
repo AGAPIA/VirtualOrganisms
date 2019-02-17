@@ -501,13 +501,13 @@ struct LogStep
 bool Simulator::autoSimulate(const int numSteps, int minPower, int maxPower, const char* resultsFileName)
 {
 	ofstream outFile("result.txt", std::ofstream::out);
-	assert(outFile.is_open() == false && "can't open the results file ! Is it opened or something ?");
+	assert(outFile.is_open() == true && "can't open the results file ! Is it opened or something ?");
 
     ofstream outCSVFile;
     if (g_outputCSVFileBestSourcesInTime)
     {
         outCSVFile.open("Sources.csv");
-        assert(outCSVFile.is_open() == false && "can't open the Sources.csv file to write the info about the sources! Is it opened or something ?");
+        assert(outCSVFile.is_open() == true && "can't open the Sources.csv file to write the info about the sources! Is it opened or something ?");
         outCSVFile << "Tick" << "," << "Day" << "," << "Tick of day" << "," << "Source Position" << "," << "Source Power" << endl;
     }
 
@@ -519,7 +519,7 @@ bool Simulator::autoSimulate(const int numSteps, int minPower, int maxPower, con
 		// Calculate the current position of the sun
 		day = i / g_numberOfTicksOnDay;
 		tickOfDay = i % g_numberOfTicksOnDay;
-		int sunRow = MAX_ROWS / 2;
+		int sunRow = randRange(0, MAX_ROWS - 1); // TODO-MIRUNA
 		int sunCol = tickOfDay / (g_numberOfTicksOnDay / MAX_COLS);
 		m_sunPos = TablePos(sunRow, sunCol);
 		// ----------------------------------
@@ -558,7 +558,7 @@ bool Simulator::autoSimulate(const int numSteps, int minPower, int maxPower, con
 				TablePos pos = getSourcePosByNormalDistribution(); 
                 if (g_outputCSVFileBestSourcesInTime)
                 {
-                    outCSVFile << i << "," << day << "," << tickOfDay << "," << std::string("(" + std::to_string(pos.row) + std::string("; ") + std::to_string(pos.col) + ")") << "," << newPower << endl;
+                    outCSVFile << i << "," << day << "," << tickOfDay << "," << std::string(std::to_string(pos.row) + std::string("; ") + std::to_string(pos.col)) << "," << newPower << endl;
                 }
 				//TablePos(randRange(0, MAX_ROWS - 1), randRange(0, MAX_COLS - 1)); // [TODO-MRIUNA] gaussian - media unde bate soarele si cat mai in centru hartii
 				

@@ -195,7 +195,7 @@ void readInput(const char* configFileName)
 		else if (key == "useEModel") { g_useEModel = std::stoi(value); }
 		else if (key == "g_energyLossThreshold") { g_energyLossThreshold = std::stof(value); }
 		else if (key == "g_variationDistribution") { g_variationDistribution = std::stof(value); }
-		else if (key == "g_numberOfTicksOnDay") { g_numberOfTicksOnDay = std::stof(value); }
+		else if (key == "g_numberOfTicksOnDay") { g_numberOfTicksOnDay = std::stoi(value); }
 		else if (key == "g_outputCSVFileBestSourcesInTime") { g_outputCSVFileBestSourcesInTime = std::stoi(value); }
 		else if (key == "g_debugSourceEventAutosimulator") { g_debugSourceEventAutosimulator = std::stoi(value); }
 		else
