@@ -28,6 +28,10 @@ extern double g_variationDistribution;
 extern int g_numberOfTicksOnDay;
 extern bool g_outputCSVFileBestSourcesInTime;
 extern bool g_debugSourceEventAutosimulator;
+extern bool g_usePredictionSourcesPosInTime;
+extern int g_thresholdTimePredict;
+
+extern int g_thresholdTimePredict;
 
 // Returns a float between 0 & 1
 #define RANDOM_NUM      ((float)rand()/(RAND_MAX+1))
@@ -46,7 +50,12 @@ Simulator::Simulator(const std::string rowExpr, std::string columnExpr, const in
 	m_colGenerator.init(m_colStrExpr, symbols);
 
 	gatherAllDistinctSymbols(symbols);
+
+	m_probabilityToBeASourcePos = new ProbabilitiesSimulator[g_numberOfTicksOnDay];
 }
+
+// for map probabilities
+//bool operator< (TablePos a, TablePos b) { return a.row < b.row && a.col < b.col; }
 
 void Simulator::printBoard(std::ostream& outStream)
 {
@@ -513,6 +522,7 @@ bool Simulator::autoSimulate(const int numSteps, int minPower, int maxPower, con
 
 	m_board.setUseDelayTicksDataFlowCapture(true); // use by default delay ticks data flow capture
 
+	float lastAvgFlowFromReconfig = -1.0f;
 	int day, tickOfDay;
 	for (int i = 0; i < numSteps; i++)
 	{
@@ -542,7 +552,41 @@ bool Simulator::autoSimulate(const int numSteps, int minPower, int maxPower, con
 		// 40% for reorganization
 		else if (choice <= 7)
 		{
-			if (!(logStep.isReorganization = m_root->onRootMsgReorganize())) // Don't do another reorganization if there is one in progress but simulate the current tick
+			if (g_usePredictionSourcesPosInTime)
+			{
+				BoardObject copyBoard = m_board;
+				//Cell* copyCellWithPrediction = new Cell();
+				//*copyCellWithPrediction = *m_root; // copy the data
+				
+				// Take the best predicted source pos and power
+				SourceInfo src;
+				std::map<TablePos, CountProbabilityPowerSource>::iterator it = m_probabilityToBeASourcePos[tickOfDay].m_sourcesPos.begin();
+				src.overridePower(it->second.power);
+				
+				TablePos pos = it->first;
+				copyBoard.propagateSourceEvent(Cell::EVENT_SOURCE_ADD, pos, src, false);
+
+				// Calculate the avg flow for the best source predicted
+				float avgFlowWithPrediction = 0.0f;
+				simulateReorganization(copyBoard, avgFlowWithPrediction, *g_debugLogOutput);
+
+				// Compare avg flow obtained
+				if (lastAvgFlowFromReconfig != -1 && avgFlowWithPrediction > lastAvgFlowFromReconfig)
+				{
+					// Do this reconfig
+					m_board = copyBoard;
+				}
+				else
+				{
+					if (!(logStep.isReorganization =
+						(lastAvgFlowFromReconfig = m_root->onRootMsgReorganize()) != -1.0f)) // Don't do another reorganization if there is one in progress but simulate the current tick
+					{
+						m_board.doDataFlowSimulation_serial(1);
+					}
+				}
+			}
+			else if (!(logStep.isReorganization = 
+				(lastAvgFlowFromReconfig = m_root->onRootMsgReorganize())!= -1.0f)) // Don't do another reorganization if there is one in progress but simulate the current tick
 			{
 				m_board.doDataFlowSimulation_serial(1);
 			}
@@ -555,13 +599,29 @@ bool Simulator::autoSimulate(const int numSteps, int minPower, int maxPower, con
 				SourceInfo src;
 				float newPower = (float)randRange(minPower, maxPower);
 				src.overridePower(newPower);
-				TablePos pos = getSourcePosByNormalDistribution(); 
-                if (g_outputCSVFileBestSourcesInTime)
-                {
-                    outCSVFile << i << "," << day << "," << tickOfDay << "," << std::string(std::to_string(pos.row) + std::string("; ") + std::to_string(pos.col)) << "," << newPower << endl;
-                }
-				//TablePos(randRange(0, MAX_ROWS - 1), randRange(0, MAX_COLS - 1)); // [TODO-MRIUNA] gaussian - media unde bate soarele si cat mai in centru hartii
 				
+				TablePos pos; 
+				if (g_outputCSVFileBestSourcesInTime)
+                {
+					pos = getSourcePosByNormalDistribution();
+
+                    outCSVFile << i << "," << day << "," << tickOfDay << "," << std::string(std::to_string(pos.row) + std::string("; ") + std::to_string(pos.col)) << "," << newPower << endl;
+					std::map<TablePos, CountProbabilityPowerSource>::iterator it;
+					it = m_probabilityToBeASourcePos[tickOfDay].m_sourcesPos.find(pos);
+					if (it != m_probabilityToBeASourcePos[tickOfDay].m_sourcesPos.end())
+					{
+						it->second.count++;
+					}
+					else
+					{
+						CountProbabilityPowerSource elem = CountProbabilityPowerSource(1, newPower, 0.0f);
+						m_probabilityToBeASourcePos[tickOfDay].m_sourcesPos.insert(std::make_pair(pos, elem));
+					}
+                }
+				else
+				{
+					pos = TablePos(randRange(0, MAX_ROWS - 1), randRange(0, MAX_COLS - 1)); // [TODO-MRIUNA] gaussian - media unde bate soarele si cat mai in centru hartii
+				}
 				// variation-cat vreau - niste factori tunabili in config.ini
 				// de simulat distrubutia si de vazut ca merge!
 				// de salvat toate [sursele - power - locatie in csv care au aparut in timp]
@@ -1060,13 +1120,25 @@ void Simulator::gatherAllDistinctSymbols(std::vector<char>& symbols)
 
 TablePos Simulator::getSourcePosByNormalDistribution()
 {
-	double mean = 0.0f; // define between 0 and MAX_COLS depends on the position related by sun
-	mean = getSunPosition().col;
+	TablePos pick = TablePos();
+	pick.row = getValueByNormalDistribution(MAX_ROWS / 2, g_variationDistribution);
+	pick.col = getValueByNormalDistribution(getSunPosition().col, g_variationDistribution);
 
+	if (g_debugSourceEventAutosimulator)
+	{
+		std::cout << std::string("Source Position : (" + std::to_string(pick.row) + std::string("; ") + std::to_string(pick.col) + ")") << endl;
+		std::cout << endl << endl;
+	}
+
+	return pick;
+}
+
+int Simulator::getValueByNormalDistribution(double _mean, double _variation)
+{
 	std::default_random_engine generator;
-	std::normal_distribution<double> distribution(mean, g_variationDistribution);
+	std::normal_distribution<double> distribution(_mean, _variation);
 
-	int distributionBoard[MAX_COLS]= { 0 };
+	int distributionBoard[MAX_COLS] = { 0 };
 	int nExperiments = 1000;
 	int nStars = 100; // Maximum number of stars to distribute
 	for (int i = 0; i < nExperiments; i++)
@@ -1077,16 +1149,16 @@ TablePos Simulator::getSourcePosByNormalDistribution()
 			distributionBoard[int(number)]++;
 		}
 	}
-    if (g_debugSourceEventAutosimulator)
-    {
-        // For debug to see the distribution
-        for (int i = 0; i < 10; ++i)
-        {
-            std::cout << i << "-" << (i + 1) << ": ";
-            std::cout << std::string((distributionBoard[i] * nStars) / nExperiments, '*') << std::endl;
-        }
-    }
-	
+	if (g_debugSourceEventAutosimulator)
+	{
+		// For debug to see the distribution
+		for (int i = 0; i < 10; ++i)
+		{
+			std::cout << i << "-" << (i + 1) << ": ";
+			std::cout << std::string((distributionBoard[i] * nStars) / nExperiments, '*') << std::endl;
+		}
+	}
+
 
 	int totalFitness = 0;
 	for (int i = 0; i < 10; ++i)
@@ -1095,26 +1167,31 @@ TablePos Simulator::getSourcePosByNormalDistribution()
 	}
 
 	// Roulette wheel selection
-	double slice = (double) (RANDOM_NUM * totalFitness);
+	double slice = (double)(RANDOM_NUM * totalFitness);
 	double offset = 0.0;
-	int row = 0; // found the best row
-	TablePos pick = TablePos();
+	int pick = -1;
 
 	for (int i = 0; i < MAX_COLS; i++)
 	{
 		offset += distributionBoard[i];
 		if (offset >= slice)
 		{
-			pick = TablePos(getSunPosition().row, i);
+			pick = i;
 			break;
 		}
 	}
-
-    if (g_debugSourceEventAutosimulator)
-    {
-        std::cout << std::string("Source Position : (" + std::to_string(pick.row) + std::string("; ") + std::to_string(pick.col) + ")") << endl;
-        std::cout << endl << endl;
-    }
-	
 	return pick;
+}
+
+void Simulator::simulateReorganization(BoardObject& board, float& outAvgFlow, std::ostream& outStream)
+{
+	Cell* rootCell = board.getRootCell();
+	rootCell->beginSimulation();
+	
+	board.reorganize(*g_debugLogOutput);
+	//board.printBoard(outStream);
+
+	// Simulate a single tick
+	board.simulateTick_serial();
+	outAvgFlow = rootCell->getAvgFlow();
 }

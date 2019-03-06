@@ -55,7 +55,9 @@ float g_maxPowerVelocityPerTick = 50.0f;
 double g_variationDistribution = 1.0f;
 int g_numberOfTicksOnDay = 30;
 bool g_outputCSVFileBestSourcesInTime = false;
+bool g_usePredictionSourcesPosInTime = false;
 bool g_debugSourceEventAutosimulator = false;
+int g_thresholdTimePredict = 5;
 
 std::ostream* g_debugLogOutput;
 
@@ -198,6 +200,8 @@ void readInput(const char* configFileName)
 		else if (key == "g_numberOfTicksOnDay") { g_numberOfTicksOnDay = std::stoi(value); }
 		else if (key == "g_outputCSVFileBestSourcesInTime") { g_outputCSVFileBestSourcesInTime = std::stoi(value); }
 		else if (key == "g_debugSourceEventAutosimulator") { g_debugSourceEventAutosimulator = std::stoi(value); }
+		else if (key == "g_usePredictionSourcesPosInTime") { g_usePredictionSourcesPosInTime = std::stoi(value); }
+		else if (key == "g_thresholdTimePredict") { g_thresholdTimePredict = std::stoi(value); }
 		else
 		{
 			ostringstream strErr;
@@ -281,9 +285,97 @@ int main()
 		}
 		else
 		{
+			if (g_usePredictionSourcesPosInTime) // we have already a csv with the prediction of sources pos in time
+			{
+				std::ifstream data("BestSourcesProbabilities.csv");
+				std::string line;
+				while (std::getline(data, line))
+				{
+					std::stringstream  lineStream(line);
+					std::string        cell;
+
+					// tick
+					std::getline(lineStream, cell, ',');
+					int tick = std::stoi(cell);
+
+					// source pos
+					std::getline(lineStream, cell, ';');
+					int row = std::stoi(cell);
+					std::getline(lineStream, cell, ',');
+					int col = std::stoi(cell);
+					TablePos pos = TablePos(row, col);
+
+					// probability
+					std::getline(lineStream, cell, ',');
+					double probability = std::stod(cell);
+
+					// power
+					std::getline(lineStream, cell, ',');
+					float power = std::stof(cell);
+					{
+						// You have a cell!!!!
+						std::map<TablePos, CountProbabilityPowerSource>::iterator it;
+						it = simulator.m_probabilityToBeASourcePos[tick].m_sourcesPos.find(pos);
+						if (it != simulator.m_probabilityToBeASourcePos[tick].m_sourcesPos.end())
+						{
+							assert(true && "The tick is already registered, please check your data from BestSourcesProbabilities.csv");
+						}
+						else
+						{
+							CountProbabilityPowerSource elem = CountProbabilityPowerSource(1, power, probability);
+							simulator.m_probabilityToBeASourcePos[tick].m_sourcesPos.insert(std::make_pair(pos, elem));
+						}
+					}
+				}
+			}
+
 			//cout << "Initial board: " << std::endl;
 			simulator.printBoard(cout);
 			simulator.autoSimulate(numStepsOnAutoSimulator, g_minPowerForWirelessSource, g_maxPowerForWirelessSource, resultsFileName);
+
+			if (g_outputCSVFileBestSourcesInTime)
+			{
+				ofstream outProbabilitiesCSVFile;
+				outProbabilitiesCSVFile.open("SourcesProbabilities.csv");
+				assert(outProbabilitiesCSVFile.is_open() == true && "can't open the SourcesProbabilities.csv file to write the info about the sources! Is it opened or something ?");
+				outProbabilitiesCSVFile << "Tick" << "," << "Source Position" << "," << "Source Probability" << "," << "Average Source Power" << endl;
+				
+
+				ofstream outBestProbabilitiesCSVFile;
+				outBestProbabilitiesCSVFile.open("BestSourcesProbabilities.csv");
+				assert(outBestProbabilitiesCSVFile.is_open() == true && "can't open the BestSourcesProbabilities.csv file to write the info about the sources! Is it opened or something ?");
+
+				for (int i = 0; i < g_numberOfTicksOnDay; i++)
+				{
+					int nrOfSourcesForCurrentTick = simulator.m_probabilityToBeASourcePos[i].m_sourcesPos.size();
+
+					// First we want to override the source power with the average of sources for the current tick
+					float powerAverage = 0.0f;
+					for (std::map<TablePos, CountProbabilityPowerSource>::iterator it = simulator.m_probabilityToBeASourcePos[i].m_sourcesPos.begin(); it != simulator.m_probabilityToBeASourcePos[i].m_sourcesPos.end(); it++)
+					{
+						powerAverage += it->second.power;
+					}
+					powerAverage /= nrOfSourcesForCurrentTick;
+
+					double maxProbability = 0.0f;
+					TablePos bestSourcePos = TablePos();
+					for (std::map<TablePos, CountProbabilityPowerSource>::iterator it = simulator.m_probabilityToBeASourcePos[i].m_sourcesPos.begin(); it != simulator.m_probabilityToBeASourcePos[i].m_sourcesPos.end(); it++)
+					{
+						it->second.probability = static_cast<double>(it->second.count) / static_cast<double>(nrOfSourcesForCurrentTick);
+						if (it->second.probability > maxProbability)
+						{
+							maxProbability = it->second.probability;
+							bestSourcePos = it->first;
+						}
+
+						it->second.power = powerAverage;
+						outProbabilitiesCSVFile << i << "," << std::string(std::to_string(it->first.row) + std::string("; ") + std::to_string(it->first.col)) << "," << it->second.probability << "," << it->second.power << endl;
+					}
+
+					outBestProbabilitiesCSVFile << i << "," << std::string(std::to_string(bestSourcePos.row) + std::string("; ") + std::to_string(bestSourcePos.col)) << "," << maxProbability << "," << powerAverage << endl;
+				}
+
+			}
 		}
 	}
 

@@ -59,6 +59,9 @@ struct TablePos
 		return TablePos(row + other.row, col + other.col);
 	}
 };
+
+// for map probabilities
+inline bool operator< (TablePos a, TablePos b) { return a.row < b.row && a.col < b.col; }
  
 int randRange(int min, int max);
 bool isCoordinateValid(int row, int col);

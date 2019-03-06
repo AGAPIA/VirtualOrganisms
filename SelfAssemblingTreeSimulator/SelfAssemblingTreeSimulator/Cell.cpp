@@ -314,7 +314,7 @@ void Cell::onMsgDiscoverStructure(int currRow, int currCol, int depth)
 #endif
 }
 
-bool Cell::onRootMsgReorganize()
+float Cell::onRootMsgReorganize()
 {
 #if RUNMODE == DIRECTIONAL_MODE
 	assert(m_column == g_247eModelRootCol && m_row == g_247eModelRootRow);
@@ -325,7 +325,7 @@ bool Cell::onRootMsgReorganize()
 	// Only in a simulation should be true
 	if (m_boardView->getUseTicksToDelayDataFlowCapture() && m_boardView->getRemainingTicksUntilApplyCutSubtree() > 0)
 	{
-		return false;
+		return -1.0f;
 	}
 
 	// Allocate an array for results - TODO: optimize we should know easily how many nodes are in the tree 
@@ -399,7 +399,7 @@ bool Cell::onRootMsgReorganize()
 		onMsgReorganizeEnd(bestRes.selectedRow, bestRes.selectedColumn, bestRes);
 	}
 
-	return true;
+	return maxScore;
 }
 
 void Cell::onMsgReorganizeStart(std::vector<AvailablePosInfoAndDeltaScore>& output)

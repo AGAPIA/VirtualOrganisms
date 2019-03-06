@@ -8,6 +8,25 @@
 #include "Cell.h" // Not really necessary but easier to debug
 #include "BoardObject.h"
 #include <ostream>
+#include <map>
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+struct CountProbabilityPowerSource
+{
+	int count = 0;
+	double probability = 0.0f;
+	float power = 0.0f;
+
+	CountProbabilityPowerSource() : count(0), power(0.0f), probability(0.0f) {}
+	CountProbabilityPowerSource(int _count, float _power, double _probability) : count(_count), power(_power), probability(_probability) {}
+};
+struct ProbabilitiesSimulator
+{
+	std::map<TablePos, CountProbabilityPowerSource> m_sourcesPos; // count the number of occurrence and probability
+};
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
 
 // Definition of the simulation bord composing all cells and sources
 struct Simulator
@@ -54,6 +73,7 @@ public:
 	// ticksToReconfigureRoot - the number of ticks the root of the subtree being cut can't send further its flow
 	void simulateOptimalVsRandomFlowScenario(const char* fileToInitializeModel, const int numScenarios, const int sampleCount, const int sampleTicks, const int ticksBetweenSourceEvent, const int ticksToReconfigureRoot, std::ostream& outStream);
 
+	ProbabilitiesSimulator* m_probabilityToBeASourcePos; // <Tick, ProbabilitiesSimulator>
 
 private:
 	void gatherAllDistinctSymbols(std::vector<char>& symbols);
@@ -69,6 +89,9 @@ private:
 	// Checks for a source event based on a given probability
 	// Returns true in sourcesModified if an operation was performed
 	static void checkSourceModifyEvent(BoardObject& board, const float probForSourceEvent, bool& sourcesModified);
+
+	// Simulates a reorganization with the new sources - autosimulation purpose 
+	void simulateReorganization(BoardObject& board, float& outAvgFlow, std::ostream& outStream);
 
 	// Returns true if board is valid
 	bool validateBoard()
@@ -97,6 +120,7 @@ private:
 
 	TablePos m_sunPos;
 
+	int getValueByNormalDistribution(double _mean, double _distribution);
 	TablePos getSourcePosByNormalDistribution();
     TablePos getSunPosition() { return m_sunPos; }
 };
