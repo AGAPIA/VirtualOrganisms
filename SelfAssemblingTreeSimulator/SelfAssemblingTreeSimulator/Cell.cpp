@@ -36,6 +36,8 @@ extern int g_247eModelRootRow;
 extern bool g_verboseElasticModel_All;
 extern bool g_verboseElasticModel_Results;
 
+extern bool g_useDelayDataFlowCapture;
+
 extern std::ostream* g_debugLogOutput;
 
 extern std::regex g_colRXExpr;
@@ -321,9 +323,8 @@ float Cell::onRootMsgReorganize()
 #else
 	assert(m_column == MAX_COLS - 1 && m_row == 0);	// Just a check for sanity :)
 #endif
-	// In the case we call reorganize and we still have a subtree that waiting to be applied
-	// Only in a simulation should be true
-	if (m_boardView->getUseTicksToDelayDataFlowCapture() && m_boardView->getRemainingTicksUntilApplyCutSubtree() > 0)
+	// In the case we call reorganize and we still have a subtree in waiting to be applied
+	if (g_useDelayDataFlowCapture &&  m_boardView->getRemainingTicksUntilApplyCutSubtree() > 0) // m_remainingTicksToDelayDataFlowCapture > 0)
 	{
 		return -1.0f;
 	}
@@ -460,7 +461,7 @@ void Cell::onMsgReorganizeEnd(int selectedRow, int selectedCol, const AvailableP
 	{
 		SubtreeInfo subtreeToMove;
 		m_boardView->cutSubtree(selectedRow, selectedCol, subtreeToMove);
-		if (!m_boardView->getUseTicksToDelayDataFlowCapture()) // We only make a reconfiguration then apply the subtree now
+		if (!g_useDelayDataFlowCapture) // We only make a reconfiguration then apply the subtree now
 		{
 			const bool res = m_boardView->tryApplySubtree(targetPosAndDir.row, targetPosAndDir.col, subtreeToMove, true, true); // double check
 			assert(res);
@@ -477,8 +478,15 @@ void Cell::onMsgReorganizeEnd(int selectedRow, int selectedCol, const AvailableP
 	}
 
 	if (g_elasticModelEnabled)
-	{
-		*g_debugLogOutput << "Board AFTER reconfiguration: \n";
+	{	
+		if (g_useDelayDataFlowCapture)
+		{
+			*g_debugLogOutput << "Board AFTER reconfiguration step and the subtree cut: \n";
+		}
+		else
+		{
+			*g_debugLogOutput << "Board AFTER reconfiguration: \n";
+		}
 		m_boardView->printBoard(*g_debugLogOutput);
 	}
 

@@ -30,6 +30,8 @@ extern bool g_verboseLocalSolutions;
 extern bool g_verboseBestGatheredSolutions;
 extern float g_energyLossThreshold;
 
+extern bool g_useDelayDataFlowCapture;
+
 extern std::ostream* g_debugLogOutput;
 
 BoardObject::~BoardObject()
@@ -556,6 +558,8 @@ void BoardObject::copyDataFrom(const BoardObject& other)
 	m_rowGenerator = other.m_rowGenerator;
 	m_colGenerator = other.m_colGenerator;
 	m_numTicksRemainingToUpdateSources = other.m_numTicksRemainingToUpdateSources;
+
+	m_remainingTicksUntilApplyCutSubtree = other.m_remainingTicksUntilApplyCutSubtree;
 }
 
 BoardObject::BoardObject()
@@ -644,15 +648,17 @@ void BoardObject::doDataFlowSimulation_serial(const int ticksToSimulate, const b
 
 		// Check if exist a subtree that should be applied
 		SubtreeCutInfo subtree = root->m_boardView->m_SubtreeCut;
-		if (!subtree.isSubtreeCut)
+		if (!subtree.isSubtreeCut && m_remainingTicksUntilApplyCutSubtree == 0)
 		{
 			return;
 		}
 
 		if (m_remainingTicksUntilApplyCutSubtree > 0)
 		{
+			*g_debugLogOutput << "Remaining ticks until apply: " << m_remainingTicksUntilApplyCutSubtree << "\n";
 			if (--m_remainingTicksUntilApplyCutSubtree == 0)
 			{
+				*g_debugLogOutput << "Apply the subtree cut!" << "\n";
 				int row = subtree.posAndScoreInfo.row;
 				int col = subtree.posAndScoreInfo.col;
 				const bool res = root->m_boardView->tryApplySubtree(row, col, subtree.subtreeInfo, true, true); // double check
@@ -660,6 +666,9 @@ void BoardObject::doDataFlowSimulation_serial(const int ticksToSimulate, const b
 
 				root->m_boardView->m_board[row][col].resetTicksToDelayDataFlowCapture();
 				root->m_boardView->m_SubtreeCut.reset();
+
+				*g_debugLogOutput << "Board AFTER subtree applied : \n";
+				printBoard(*g_debugLogOutput);
 			}
 		}
 	}
@@ -3337,7 +3346,8 @@ void BoardObject::fillSimulationContext(SimulationContext& simContext) const
 		for (int i = 0; i < leafNodesCaptureIndirection.size(); i++)
 		{
 			auto& leafNode = leafNodesCapture[leafNodesCaptureIndirection[i]];
-			if (leafNode.remainingCap <= 0.0f)
+			if (leafNode.remainingCap <= 0.0f || 
+				(g_useDelayDataFlowCapture && (const_cast<Cell*>(leafNode.cell))->getRemainingTicksUntilApplyCutSubtree()) ) // Check if it's not a node from which was cut
 				continue;
 
 			const TablePos& leafPos = leafNode.pos;

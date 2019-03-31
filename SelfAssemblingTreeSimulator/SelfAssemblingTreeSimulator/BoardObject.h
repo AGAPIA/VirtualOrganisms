@@ -347,10 +347,8 @@ struct BoardObject
 
 	SubtreeCutInfo	m_SubtreeCut;
 	int  getRemainingTicksUntilApplyCutSubtree() { return m_remainingTicksUntilApplyCutSubtree; }
-	int  setRemainingTicksUntilApplyCutSubtree(int ticks) { return m_remainingTicksUntilApplyCutSubtree = ticks; }
+	void  setRemainingTicksUntilApplyCutSubtree(int ticks) { m_remainingTicksUntilApplyCutSubtree = ticks; }
 
-	void setUseDelayTicksDataFlowCapture(bool useDelayTicksDataFlowCapture) { m_UseTicksToDelayDataFlowCapture = useDelayTicksDataFlowCapture; }
-	bool getUseTicksToDelayDataFlowCapture() { return m_UseTicksToDelayDataFlowCapture; }
 private:
 
 #if RUNMODE == DIRECTIONAL_MODE
@@ -464,7 +462,6 @@ private:
 	int m_rootRow = INVALID_POS;
 	int m_rootCol = INVALID_POS;
 
-	bool m_UseTicksToDelayDataFlowCapture = false; // To check if we want to use it or not (eg. in reconfiguration option we don't want it)
 	int	 m_remainingTicksUntilApplyCutSubtree = 0; // Copy from the root cell of the subtree that was cut
 };
 

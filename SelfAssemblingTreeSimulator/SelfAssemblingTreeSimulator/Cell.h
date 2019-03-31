@@ -353,6 +353,7 @@ struct Cell
 	void resetCapacityUsedInSubtree();
 
 	void resetTicksToDelayDataFlowCapture() { m_remainingTicksToDelayDataFlowCapture = 0; }
+	int getRemainingTicksUntilApplyCutSubtree() { return m_remainingTicksToDelayDataFlowCapture; }
 
 #if RUNMODE == DIRECTIONAL_MODE
 	float getCachedEnergyConsumedStat() const {

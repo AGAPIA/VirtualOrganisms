@@ -123,6 +123,8 @@ private:
 	int getValueByNormalDistribution(double _mean, double _distribution);
 	TablePos getSourcePosByNormalDistribution();
     TablePos getSunPosition() { return m_sunPos; }
+
+	void simulateSourceEvent(Cell::BroadcastEventType _eventType, BoardObject& _board, int _tickOfDay);
 };
 
 

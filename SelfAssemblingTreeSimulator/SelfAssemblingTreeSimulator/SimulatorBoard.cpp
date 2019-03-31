@@ -31,7 +31,7 @@ extern bool g_debugSourceEventAutosimulator;
 extern bool g_usePredictionSourcesPosInTime;
 extern int g_thresholdTimePredict;
 
-extern int g_thresholdTimePredict;
+extern bool g_useDelayDataFlowCapture;
 
 // Returns a float between 0 & 1
 #define RANDOM_NUM      ((float)rand()/(RAND_MAX+1))
@@ -285,8 +285,6 @@ void Simulator::doStepByStepSimulation(const bool writeHelperOutput, std::istrea
 			outStream << "##########################################################" << endl;
 		}
 
-		m_board.setUseDelayTicksDataFlowCapture(true); // use by default delay ticks data flow capture
-
 		inStream >> ev;
 
 		switch (ev)
@@ -377,8 +375,8 @@ void Simulator::doStepByStepSimulation(const bool writeHelperOutput, std::istrea
 		case 'R':
 		case 'r':
 		{
-			// We want only a reorganization here
-			m_board.setUseDelayTicksDataFlowCapture(false);
+			// We want only a reorganization here - make sure we don't use this delay on data flow capture
+			g_useDelayDataFlowCapture = false;
 
 			addBoardInHistory(&m_board);
 			m_board.reorganize(outStream);
@@ -520,18 +518,22 @@ bool Simulator::autoSimulate(const int numSteps, int minPower, int maxPower, con
         outCSVFile << "Tick" << "," << "Day" << "," << "Tick of day" << "," << "Source Position" << "," << "Source Power" << endl;
     }
 
-	m_board.setUseDelayTicksDataFlowCapture(true); // use by default delay ticks data flow capture
+	if (g_useDelayDataFlowCapture && g_usePredictionSourcesPosInTime)
+		g_useDelayDataFlowCapture = !g_usePredictionSourcesPosInTime;
 
-	float lastAvgFlowFromReconfig = -1.0f;
+	float lastAvgFlow = -1.0f;
 	int day, tickOfDay;
 	for (int i = 0; i < numSteps; i++)
 	{
 		// Calculate the current position of the sun
-		day = i / g_numberOfTicksOnDay;
-		tickOfDay = i % g_numberOfTicksOnDay;
-		int sunRow = randRange(0, MAX_ROWS - 1); // TODO-MIRUNA
-		int sunCol = tickOfDay / (g_numberOfTicksOnDay / MAX_COLS);
-		m_sunPos = TablePos(sunRow, sunCol);
+		if (g_outputCSVFileBestSourcesInTime || g_usePredictionSourcesPosInTime)
+		{
+			day = i / g_numberOfTicksOnDay;
+			tickOfDay = i % g_numberOfTicksOnDay;
+			int sunRow = randRange(0, MAX_ROWS - 1); // Recalculate
+			int sunCol = tickOfDay / (g_numberOfTicksOnDay / MAX_COLS);
+			m_sunPos = TablePos(sunRow, sunCol);
+		}
 		// ----------------------------------
 
 		LogStep logStep(i);
@@ -545,49 +547,40 @@ bool Simulator::autoSimulate(const int numSteps, int minPower, int maxPower, con
 		{
 			if (choice <= 0)
 			{
-				doDataFlowSimulation_serial(false, outFile); // [TODO-MIRUNA] m_board.doDataFlowSimulation_serial(1); ?? because of g_simulationTicksForDataFlowEstimation
+				// doDataFlowSimulation_serial(false, outFile); 
+				// [TODO-MIRUNA] I think we should use: "m_board.doDataFlowSimulation_serial(1);" ?? because of g_simulationTicksForDataFlowEstimation = 10 now
+				m_board.doDataFlowSimulation_serial(1);
 			}
 			continue;
 		}
 		// 40% for reorganization
 		else if (choice <= 7)
 		{
+			*g_debugLogOutput << "Autosimulation step try reconfiguration event: " << i << "\n";
 			if (g_usePredictionSourcesPosInTime)
 			{
 				BoardObject copyBoard = m_board;
-				//Cell* copyCellWithPrediction = new Cell();
-				//*copyCellWithPrediction = *m_root; // copy the data
 				
-				// Take the best predicted source pos and power
-				SourceInfo src;
-				std::map<TablePos, CountProbabilityPowerSource>::iterator it = m_probabilityToBeASourcePos[tickOfDay].m_sourcesPos.begin();
-				src.overridePower(it->second.power);
-				
-				TablePos pos = it->first;
-				copyBoard.propagateSourceEvent(Cell::EVENT_SOURCE_ADD, pos, src, false);
-
-				// Calculate the avg flow for the best source predicted
+				// Calculate the avg flow for the best sources predicted between tickOfDay and tickOfDay + g_thresholdTimePredict
 				float avgFlowWithPrediction = 0.0f;
+				simulateSourceEvent(Cell::EVENT_SOURCE_ADD, copyBoard, tickOfDay);
 				simulateReorganization(copyBoard, avgFlowWithPrediction, *g_debugLogOutput);
 
 				// Compare avg flow obtained
-				if (lastAvgFlowFromReconfig != -1 && avgFlowWithPrediction > lastAvgFlowFromReconfig)
+				if (avgFlowWithPrediction > lastAvgFlow)
 				{
-					// Do this reconfig
+					// Do this reconfiguration so copy the new board but without sources
+					logStep.isReorganization = true;
+					simulateSourceEvent(Cell::EVENT_SOURCE_REMOVE, copyBoard, tickOfDay);
 					m_board = copyBoard;
+					lastAvgFlow = avgFlowWithPrediction;
 				}
-				else
-				{
-					if (!(logStep.isReorganization =
-						(lastAvgFlowFromReconfig = m_root->onRootMsgReorganize()) != -1.0f)) // Don't do another reorganization if there is one in progress but simulate the current tick
-					{
-						m_board.doDataFlowSimulation_serial(1);
-					}
-				}
+				m_board.doDataFlowSimulation_serial(1);
 			}
-			else if (!(logStep.isReorganization = 
-				(lastAvgFlowFromReconfig = m_root->onRootMsgReorganize())!= -1.0f)) // Don't do another reorganization if there is one in progress but simulate the current tick
+			else if (!(logStep.isReorganization = (m_root->onRootMsgReorganize() != -1.0f)))
+				// Don't do another reorganization if there is one in progress but simulate the current tick
 			{
+				*g_debugLogOutput << "reconfiguration event failed: " << i << "\n";
 				m_board.doDataFlowSimulation_serial(1);
 			}
 		}
@@ -601,7 +594,7 @@ bool Simulator::autoSimulate(const int numSteps, int minPower, int maxPower, con
 				src.overridePower(newPower);
 				
 				TablePos pos; 
-				if (g_outputCSVFileBestSourcesInTime)
+				if (g_outputCSVFileBestSourcesInTime) // If you want to write in csv file the best sources that was added in time to use later in predictable reconfiguration
                 {
 					pos = getSourcePosByNormalDistribution();
 
@@ -620,21 +613,8 @@ bool Simulator::autoSimulate(const int numSteps, int minPower, int maxPower, con
                 }
 				else
 				{
-					pos = TablePos(randRange(0, MAX_ROWS - 1), randRange(0, MAX_COLS - 1)); // [TODO-MRIUNA] gaussian - media unde bate soarele si cat mai in centru hartii
+					pos = TablePos(randRange(0, MAX_ROWS - 1), randRange(0, MAX_COLS - 1)); 
 				}
-				// variation-cat vreau - niste factori tunabili in config.ini
-				// de simulat distrubutia si de vazut ca merge!
-				// de salvat toate [sursele - power - locatie in csv care au aparut in timp]
-				// in python - matplotlib - un grafic unde au fost sursele intre ticii x si y
-
-				// task 3: de marit timpul eg de la 1 la 1000
-				// sa rulez simulatorul / un parametru care sa stocheze sursele sau nu
-				// vreau sa prezic unde sunt sursele - RL - estimez unde o sa fie sursele ca sa fac reconfigurare in zona aia
-				// 1. unde o sa fie sursele : cate sunt, unde - o lista (sursa, power)
-				// Testare : sa fac o cautare intr-un subsatiu - monte carlo
-				// stiind ca astea o sa fie sursele daca fac o reconfigurare aici -> facem modificarea dinainte
-				// timpul ca parametru in cazul in care se ia 
-				// predictible reorganization - cu predictia scoate un rezultat mai bun?
 
 				addSource(pos, src);
 
@@ -1186,7 +1166,7 @@ int Simulator::getValueByNormalDistribution(double _mean, double _variation)
 void Simulator::simulateReorganization(BoardObject& board, float& outAvgFlow, std::ostream& outStream)
 {
 	Cell* rootCell = board.getRootCell();
-	rootCell->beginSimulation();
+	rootCell->beginSimulation(); // this calls the clearStats ?
 	
 	board.reorganize(*g_debugLogOutput);
 	//board.printBoard(outStream);
@@ -1194,4 +1174,17 @@ void Simulator::simulateReorganization(BoardObject& board, float& outAvgFlow, st
 	// Simulate a single tick
 	board.simulateTick_serial();
 	outAvgFlow = rootCell->getAvgFlow();
+}
+
+void Simulator::simulateSourceEvent(Cell::BroadcastEventType _eventType, BoardObject& _board, int _tickOfDay)
+{
+	for (int i = _tickOfDay; i < std::min(_tickOfDay + g_thresholdTimePredict, g_numberOfTicksOnDay); i++)
+	{
+		std::map<TablePos, CountProbabilityPowerSource>::iterator it = m_probabilityToBeASourcePos[i].m_sourcesPos.begin();
+		SourceInfo src;
+		src.overridePower(it->second.power);
+
+		TablePos pos = it->first;
+		_board.propagateSourceEvent(_eventType, pos, src, false);
+	}
 }
