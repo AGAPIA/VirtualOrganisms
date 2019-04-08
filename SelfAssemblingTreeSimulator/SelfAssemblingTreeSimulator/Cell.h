@@ -193,6 +193,8 @@ struct Cell
 
 	bool m_isRented;
 
+	// TODO-MIRUNA save it for simulation purpose
+	AvailablePosInfoAndDeltaScore m_bestPos;
 
 	Cell();
 	virtual ~Cell();

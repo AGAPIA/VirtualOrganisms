@@ -394,7 +394,10 @@ float Cell::onRootMsgReorganize()
 		onMsgReorganizeEnd(INVALID_POS, INVALID_POS, dummy);
 	}
 	else
-	{
+	{		
+		// TODO-MIRUNA; save it for the simulation purpose
+		m_bestPos = localBestResults[maxIndex];
+
 		const AvailablePosInfoAndDeltaScore& bestRes = localBestResults[maxIndex];
 		assert(isCoordinateValid(bestRes.selectedRow, bestRes.selectedColumn) && "It looks like the selected row/column for restructuring has failed to fill correctly. There is a bug !");
 		onMsgReorganizeEnd(bestRes.selectedRow, bestRes.selectedColumn, bestRes);

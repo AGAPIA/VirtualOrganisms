@@ -57,8 +57,9 @@ int g_numberOfTicksOnDay = 30;
 bool g_outputCSVFileBestSourcesInTime = false;
 bool g_usePredictionSourcesPosInTime = false;
 bool g_debugSourceEventAutosimulator = false;
-int g_thresholdTimePredict = 5;
+int g_thresholdTimePredict = 12;
 bool g_useDelayDataFlowCapture = true;
+bool g_debugAutosimulationStep = false;
 
 std::ostream* g_debugLogOutput;
 
@@ -204,6 +205,7 @@ void readInput(const char* configFileName)
 		else if (key == "g_usePredictionSourcesPosInTime") { g_usePredictionSourcesPosInTime = std::stoi(value); }
 		else if (key == "g_thresholdTimePredict") { g_thresholdTimePredict = std::stoi(value); }
 		else if (key == "g_useDelayDataFlowCapture") { g_useDelayDataFlowCapture = std::stoi(value); }
+		else if (key == "g_debugAutosimulationStep") { g_debugAutosimulationStep = std::stoi(value); }
 		else
 		{
 			ostringstream strErr;

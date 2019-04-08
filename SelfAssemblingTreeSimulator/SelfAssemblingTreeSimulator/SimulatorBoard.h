@@ -90,9 +90,6 @@ private:
 	// Returns true in sourcesModified if an operation was performed
 	static void checkSourceModifyEvent(BoardObject& board, const float probForSourceEvent, bool& sourcesModified);
 
-	// Simulates a reorganization with the new sources - autosimulation purpose 
-	void simulateReorganization(BoardObject& board, float& outAvgFlow, std::ostream& outStream);
-
 	// Returns true if board is valid
 	bool validateBoard()
 	{
@@ -124,7 +121,7 @@ private:
 	TablePos getSourcePosByNormalDistribution();
     TablePos getSunPosition() { return m_sunPos; }
 
-	void simulateSourceEvent(Cell::BroadcastEventType _eventType, BoardObject& _board, int _tickOfDay);
+	bool simulateSourcePrediction(Cell::BroadcastEventType _eventType, BoardObject& _board, float& outAvgFlow, int _tickOfDay, const bool _withReconfiguration = false);
 };
 
 

@@ -32,6 +32,8 @@ extern float g_energyLossThreshold;
 
 extern bool g_useDelayDataFlowCapture;
 
+extern bool g_debugAutosimulationStep;
+
 extern std::ostream* g_debugLogOutput;
 
 BoardObject::~BoardObject()
@@ -648,28 +650,36 @@ void BoardObject::doDataFlowSimulation_serial(const int ticksToSimulate, const b
 
 		// Check if exist a subtree that should be applied
 		SubtreeCutInfo subtree = root->m_boardView->m_SubtreeCut;
-		if (!subtree.isSubtreeCut && m_remainingTicksUntilApplyCutSubtree == 0)
+		if (!subtree.isSubtreeCut) // && m_remainingTicksUntilApplyCutSubtree == 0)
 		{
 			return;
 		}
 
-		if (m_remainingTicksUntilApplyCutSubtree > 0)
-		{
+		if (g_debugAutosimulationStep)
 			*g_debugLogOutput << "Remaining ticks until apply: " << m_remainingTicksUntilApplyCutSubtree << "\n";
-			if (--m_remainingTicksUntilApplyCutSubtree == 0)
-			{
-				*g_debugLogOutput << "Apply the subtree cut!" << "\n";
-				int row = subtree.posAndScoreInfo.row;
-				int col = subtree.posAndScoreInfo.col;
-				const bool res = root->m_boardView->tryApplySubtree(row, col, subtree.subtreeInfo, true, true); // double check
-				assert(res && "[BoardObject::doDataFlowSimulation_serial] Couldn't apply the subtree cut!");
+		
+		if (--m_remainingTicksUntilApplyCutSubtree == 0)
+		{
+			*g_debugLogOutput << "Apply the subtree cut!" << "\n";
+			int row = subtree.posAndScoreInfo.row;
+			int col = subtree.posAndScoreInfo.col;
+			const bool res = root->m_boardView->tryApplySubtree(row, col, subtree.subtreeInfo, true, true); // double check
+			assert(res && "[BoardObject::doDataFlowSimulation_serial] Couldn't apply the subtree cut!");
 
-				root->m_boardView->m_board[row][col].resetTicksToDelayDataFlowCapture();
-				root->m_boardView->m_SubtreeCut.reset();
+			// Reset also on the cell level
+			root->m_boardView->m_board[subtree.posAndScoreInfo.selectedRow][subtree.posAndScoreInfo.selectedColumn].resetTicksToDelayDataFlowCapture();
 
-				*g_debugLogOutput << "Board AFTER subtree applied : \n";
-				printBoard(*g_debugLogOutput);
-			}
+			root->m_boardView->m_SubtreeCut.reset();
+
+			////////////////////////////////////////////////////
+			doDataFlowSimulation_serial(1);
+			const float currentScore = (float)getLastSimulationAvgDataFlowPerUnit();
+			*g_debugLogOutput << "[BoardObject::doDataFlowSimulation_serial] Reconfiguration avg flow after subtree applied " << currentScore << "\n";
+			///////////////////////////////////////////////////
+
+			*g_debugLogOutput << "Board AFTER subtree applied : \n";
+			
+			printBoard(*g_debugLogOutput);
 		}
 	}
 }

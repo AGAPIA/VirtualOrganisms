@@ -33,8 +33,13 @@ extern int g_thresholdTimePredict;
 
 extern bool g_useDelayDataFlowCapture;
 
+extern bool g_debugAutosimulationStep;
+
 // Returns a float between 0 & 1
 #define RANDOM_NUM      ((float)rand()/(RAND_MAX+1))
+
+// Used in predictable reconfiguration
+const float MULTIPLIER_THRESHOLD_TIME_PREDICT = 0.25f;
 
 Simulator::Simulator(const std::string rowExpr, std::string columnExpr, const int speedOnConduct)
 	: m_speedOnConduct(speedOnConduct)
@@ -518,10 +523,6 @@ bool Simulator::autoSimulate(const int numSteps, int minPower, int maxPower, con
         outCSVFile << "Tick" << "," << "Day" << "," << "Tick of day" << "," << "Source Position" << "," << "Source Power" << endl;
     }
 
-	if (g_useDelayDataFlowCapture && g_usePredictionSourcesPosInTime)
-		g_useDelayDataFlowCapture = !g_usePredictionSourcesPosInTime;
-
-	float lastAvgFlow = -1.0f;
 	int day, tickOfDay;
 	for (int i = 0; i < numSteps; i++)
 	{
@@ -556,31 +557,40 @@ bool Simulator::autoSimulate(const int numSteps, int minPower, int maxPower, con
 		// 40% for reorganization
 		else if (choice <= 7)
 		{
-			*g_debugLogOutput << "Autosimulation step try reconfiguration event: " << i << "\n";
+			if (g_debugAutosimulationStep)
+				*g_debugLogOutput << "Autosimulation step try reconfiguration event: " << i << "\n";
 			if (g_usePredictionSourcesPosInTime)
 			{
-				BoardObject copyBoard = m_board;
+				// Calculate the avg flow for the best sources predicted between tickOfDay and tickOfDay + g_thresholdTimePredict with and without reconfiguration
+				BoardObject reconfigBoard = m_board;
+				BoardObject noReconfigBoard = m_board;
+				float avgFlowWithReconfig = 0.0f, avgFlowWithoutReconfig = 0.0f; 
+				bool predictionWithReconfig = simulateSourcePrediction(Cell::EVENT_SOURCE_ADD, reconfigBoard, avgFlowWithReconfig, tickOfDay, true /*With reconfiguration*/);
+				simulateSourcePrediction(Cell::EVENT_SOURCE_ADD, noReconfigBoard, avgFlowWithoutReconfig, tickOfDay);
 				
-				// Calculate the avg flow for the best sources predicted between tickOfDay and tickOfDay + g_thresholdTimePredict
-				float avgFlowWithPrediction = 0.0f;
-				simulateSourceEvent(Cell::EVENT_SOURCE_ADD, copyBoard, tickOfDay);
-				simulateReorganization(copyBoard, avgFlowWithPrediction, *g_debugLogOutput);
-
 				// Compare avg flow obtained
-				if (avgFlowWithPrediction > lastAvgFlow)
+				if (predictionWithReconfig /*To check if the reconfiguration was finished in the max time limit*/ && 
+					avgFlowWithReconfig > avgFlowWithoutReconfig && 
+					isCoordinateValid(reconfigBoard.getRootCell()->m_bestPos.selectedRow, reconfigBoard.getRootCell()->m_bestPos.selectedColumn))
 				{
-					// Do this reconfiguration so copy the new board but without sources
+					// Do this reconfiguration -> so start a reconfiguration on the real board
 					logStep.isReorganization = true;
-					simulateSourceEvent(Cell::EVENT_SOURCE_REMOVE, copyBoard, tickOfDay);
-					m_board = copyBoard;
-					lastAvgFlow = avgFlowWithPrediction;
+					// assert(isCoordinateValid(reconfigBoard.getRootCell()->m_bestPos.selectedRow, reconfigBoard.getRootCell()->m_bestPos.selectedColumn) && "It looks like the selected row/column for restructuring has failed to fill correctly. There is a bug !");
+					// Force the same reconfiguration on the original board
+					m_board.getRootCell()->onMsgReorganizeEnd(reconfigBoard.getRootCell()->m_bestPos.selectedRow, reconfigBoard.getRootCell()->m_bestPos.selectedColumn, reconfigBoard.getRootCell()->m_bestPos);
 				}
-				m_board.doDataFlowSimulation_serial(1);
+				// else // Simulate the current tick
+				{
+					m_board.doDataFlowSimulation_serial(1);
+				}
 			}
-			else if (!(logStep.isReorganization = (m_root->onRootMsgReorganize() != -1.0f)))
-				// Don't do another reorganization if there is one in progress but simulate the current tick
+			else
 			{
-				*g_debugLogOutput << "reconfiguration event failed: " << i << "\n";
+				logStep.isReorganization = true;
+				
+				if (m_root->onRootMsgReorganize() == -1 && g_debugAutosimulationStep)
+					*g_debugLogOutput << "Reconfiguration event failed: " << i << "\n";
+				
 				m_board.doDataFlowSimulation_serial(1);
 			}
 		}
@@ -1163,22 +1173,23 @@ int Simulator::getValueByNormalDistribution(double _mean, double _variation)
 	return pick;
 }
 
-void Simulator::simulateReorganization(BoardObject& board, float& outAvgFlow, std::ostream& outStream)
+bool Simulator::simulateSourcePrediction(Cell::BroadcastEventType _eventType, BoardObject& _board, float& outAvgFlow, int _tickOfDay, const bool _withReconfiguration)
 {
-	Cell* rootCell = board.getRootCell();
-	rootCell->beginSimulation(); // this calls the clearStats ?
-	
-	board.reorganize(*g_debugLogOutput);
-	//board.printBoard(outStream);
+	// First remove all the current sources
+	/*std::vector<TablePos> allSources(_board.m_posToSourceMap.size());
+	for (auto it : _board.m_posToSourceMap)
+	{
+		allSources.push_back(it.first);
+	}
+	for (int i = 0; i < allSources.size(); i++)
+	{
+		_board.propagateSourceEvent(Cell::EVENT_SOURCE_REMOVE, allSources[i], SourceInfo(), false);
+	}*/
 
-	// Simulate a single tick
-	board.simulateTick_serial();
-	outAvgFlow = rootCell->getAvgFlow();
-}
-
-void Simulator::simulateSourceEvent(Cell::BroadcastEventType _eventType, BoardObject& _board, int _tickOfDay)
-{
-	for (int i = _tickOfDay; i < std::min(_tickOfDay + g_thresholdTimePredict, g_numberOfTicksOnDay); i++)
+	// Add all sources between currentTick and currentTick + threshold * multiplier
+	Cell* rootCell = _board.getRootCell(); 
+	rootCell->beginSimulation();
+	for (int i = _tickOfDay; i < std::min(_tickOfDay + static_cast<int>(g_thresholdTimePredict * MULTIPLIER_THRESHOLD_TIME_PREDICT), g_numberOfTicksOnDay); i++)
 	{
 		std::map<TablePos, CountProbabilityPowerSource>::iterator it = m_probabilityToBeASourcePos[i].m_sourcesPos.begin();
 		SourceInfo src;
@@ -1186,5 +1197,30 @@ void Simulator::simulateSourceEvent(Cell::BroadcastEventType _eventType, BoardOb
 
 		TablePos pos = it->first;
 		_board.propagateSourceEvent(_eventType, pos, src, false);
+
+		// Simulate a single tick
+		_board.simulateTick_serial();
 	}
+
+	// Make the reconfiguration with the new sources added
+	if (_withReconfiguration)
+	{
+		rootCell->onRootMsgReorganize();
+		if (isCoordinateValid(rootCell->m_bestPos.selectedRow, rootCell->m_bestPos.selectedColumn))
+		{
+			// To check if the reconfiguration was finished until the max time allocated for it expired
+			int indexTime = _tickOfDay;
+			while (indexTime < _tickOfDay + g_thresholdTimePredict)
+			{
+				_board.doDataFlowSimulation_serial(1);
+				indexTime++;
+			}
+		}
+	}
+
+	// Get the avg flow obtained
+	outAvgFlow = rootCell->getAvgFlow();
+
+	// In case of reconfiguration check if it succeeded
+	return (_withReconfiguration ? _board.getRemainingTicksUntilApplyCutSubtree() == 0 : true);
 }
