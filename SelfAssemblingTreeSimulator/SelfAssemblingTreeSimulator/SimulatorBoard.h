@@ -25,7 +25,7 @@ public:
 	bool removeSource(const TablePos& tablePos);
 
 	// Simulates and outputs result to a file
-	bool autoSimulate(const int numSteps, int minPower, int maxPower, const char* resultsFileName);
+	bool autoSimulateWirelessCollector(const int numSteps, int minPower, int maxPower, const char* resultsFileName);
 	void doStepByStepSimulation(const bool writeHelperOutput, std::istream& inStream, std::ostream& outStream);
 	
 	// Prints the board on screen
@@ -40,6 +40,12 @@ public:
 
 	// Serial (deterministic) simulation of data flow
 	void doDataFlowSimulation_serial(const bool withReconfiguration, std::ostream& output);
+
+#if SIMULATION_MODE==SIMULATE_PS_MODEL
+	void doPublisherSubscriberSim_serial(const bool withReconfiguration, std::ostream& output);
+#endif
+
+
 
 	void doUnitTests();
 	void printBoard();

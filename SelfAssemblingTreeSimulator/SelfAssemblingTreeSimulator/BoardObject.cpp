@@ -15,6 +15,9 @@ using namespace std;
 
 extern int g_speedOnConduct;
 extern int g_minPowerForWirelessSource;
+extern float g_probability_to_spawn_publisher;
+extern int g_maxPublisher_inflow;
+extern int g_maxPublisher_outflow;
 extern int g_maxPowerForWirelessSource;
 extern int g_simulationTicksForDataFlowEstimation;
 extern int g_minNodesOnRandomTree;
@@ -41,19 +44,34 @@ bool BoardObject::addSource(const TablePos& pos, const SourceInfo& sourceInfo)
 	auto it = m_posToSourceMap.find(pos);
 	if (it != m_posToSourceMap.end())
 	{
-		//assert(false && "This source is already added !");
+#if SIMULATION_MODE==SIMULATE_PS_MODEL
+		assert(false && "This source is already added !");
+#else if SIMULATION_MODE==SIMULATE_TREE_COLECTOR
 		// Just change the power
+
 		it->second.overridePower(sourceInfo.getPower());
+#endif
+
 		return true;
 	}
 
 	m_posToSourceMap.insert(std::make_pair(pos, sourceInfo));
+
+
+#if SIMULATION_MODE==SIMULATE_PS_MODEL
+	m_PSModeManager.onItemAdd(pos, sourceInfo);
+#endif
 
 	return true;
 }
 
 bool BoardObject::modifySource(const TablePos& pos, const SourceInfo& sourceInfo)
 {
+#if SIMULATION_MODE==SIMULATE_PS_MODEL
+	assert(false && "You can't modify sources in PS model right now. Please remove the source and add it again !");
+	return false;
+#endif
+
 	auto it = m_posToSourceMap.find(pos);
 	if (it == m_posToSourceMap.end())
 	{
@@ -67,6 +85,10 @@ bool BoardObject::modifySource(const TablePos& pos, const SourceInfo& sourceInfo
 
 bool BoardObject::removeSource(const TablePos& pos, const bool allSources)
 {
+#if SIMULATION_MODE==SIMULATE_PS_MODEL
+	m_PSModeManager.onItemRemoved(pos, allSources);
+#endif
+
 	if (allSources)
 	{
 		m_posToSourceMap.clear();
@@ -556,12 +578,15 @@ void BoardObject::copyDataFrom(const BoardObject& other)
 	m_rowGenerator = other.m_rowGenerator;
 	m_colGenerator = other.m_colGenerator;
 	m_numTicksRemainingToUpdateSources = other.m_numTicksRemainingToUpdateSources;
+
+	m_PSModeManager = other.m_PSModeManager;
 }
 
 BoardObject::BoardObject()
 	: m_colGenerator(nullptr)
 	, m_rowGenerator(nullptr)
 	, m_numTicksRemainingToUpdateSources(0)
+	, m_PSModeManager(this)
 {
 #if RUNMODE == DIRECTIONAL_MODE
 	const int rootColumn = rand() % (MAX_COLS / 3);
@@ -574,6 +599,7 @@ BoardObject::BoardObject()
 }
 
 BoardObject::BoardObject(const BoardObject& other)
+	: m_PSModeManager(this)
 {
 	copyDataFrom(other);
 }
@@ -610,6 +636,8 @@ void BoardObject::reset(const bool withoutStatistics, const bool resetSymbolsToo
 	{
 		getRootCell()->initFlowStatistics(g_simulationTicksForDataFlowEstimation);
 	}
+
+	m_PSModeManager.reset();
 }
 
 float BoardObject::doDataFlowSimulation_serial_WITHOUT_SIDE_EFFECTS(const int ticksToSimulate)
@@ -836,6 +864,11 @@ void BoardObject::setNewCell(const int targetRow, const int targetCol, const cha
 
 void BoardObject::updateSourcesPower()
 {
+	// Not varying yet this
+#if SIMULATION_MODE==SIMULATE_PS_MODEL
+	return;
+#endif
+
 	if (!variableSourcesPower)
 		return;
 
@@ -1225,6 +1258,9 @@ void BoardObject::printBoard(std::ostream& outStream)
 		outStream << std::endl;
 	}
 
+#if SIMULATION_MODE==SIMULATE_PS_MODEL
+	m_PSModeManager.printDetails(outStream);
+#else if SIMULATION_MODE == SIMULATE_TREE_COLECTOR
 	outStream << "Current sources ((row,col - power): ";
 	for (auto& it : m_posToSourceMap)
 	{
@@ -1234,6 +1270,7 @@ void BoardObject::printBoard(std::ostream& outStream)
 		outStream << " (" << pos.row << ", " << pos.col << ") - " << srcInfo.getPower();
 	}
 	outStream << endl << endl << endl;
+#endif
 }
 
 
@@ -2685,10 +2722,8 @@ bool BoardObject::generateRandomBoard(const int numDepthBranches, const int numS
 		{
 			const int row = randRange(0, MAX_ROWS - 1);
 			const int col = randRange(0, MAX_COLS - 1);
-			const float power = (float)randRange(g_minPowerForWirelessSource, g_maxPowerForWirelessSource);
+			SourceInfo src = getRandomSourceInfo();
 
-			SourceInfo src;
-			src.overridePower(power);
 			propagateSourceEvent(Cell::EVENT_SOURCE_ADD, TablePos(row, col), src, false);
 		}
 

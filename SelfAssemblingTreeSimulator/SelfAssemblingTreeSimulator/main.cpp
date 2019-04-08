@@ -26,6 +26,9 @@ char *resultsFileName = "results.txt";
 int numStepsOnAutoSimulator = 0; // 1000;
 int g_minPowerForWirelessSource = 10;
 int g_maxPowerForWirelessSource = 1000;
+int g_maxPublisher_inflow = 100;		// max publisher capacity
+int g_maxPublisher_outflow = 50;		// max consumer capacity
+float g_probability_to_spawn_publisher = 0.3f;
 int g_speedOnConduct = 10;
 int g_maxFlowPerCell = 100000;
 int g_ticksToDelayDataFlowCaptureOnRestructure = 10;
@@ -38,6 +41,7 @@ int g_simulateOptimalVsRandomFlowScenarios = 0;
 int g_simulateOptimalVsRandomFlowSampleCount = 0;
 int g_avgTickBetweenSourceEvents = 0;
 int g_maxResourcesToRent = 1;
+char* g_simulatorFile = "simulator_psmodel.txt";		// The file to use as simulation steps
 
 
 bool g_verboseBestGatheredSolutions = true; // print the best gathered solutions
@@ -163,9 +167,14 @@ void readInput(const char* configFileName)
 		else if (key == "initializeFromFile") { initializeFromFile = std::stoi(value) == 1 ? true : false; }
 		else if (key == "fileToInitializeFrom") { fileToInitializeFrom = strdup(value.c_str()); }
 		else if (key == "resultsFileName") { resultsFileName = strdup(value.c_str()); }
+		else if (key == "g_simulatorFile") { g_simulatorFile = strdup(value.c_str()); }
 		else if (key == "numStepsOnAutoSimulator") { numStepsOnAutoSimulator  = std::stoi(value); }
 		else if (key == "minPowerForWirelessSource") { g_minPowerForWirelessSource = std::stoi(value); }
 		else if (key == "maxPowerForWirelessSource") { g_maxPowerForWirelessSource = std::stoi(value); }
+		else if (key == "g_maxPublisher_inflow") { g_maxPublisher_inflow = std::stoi(value); }
+		else if (key == "g_maxPublisher_outflow") { g_maxPublisher_outflow = std::stoi(value); }
+		else if (key == "g_maxPublisher_outflow") { g_maxPublisher_outflow = std::stoi(value); }
+		else if (key == "g_probability_to_spawn_publisher") { g_probability_to_spawn_publisher = std::stof(value); }
 		else if (key == "minNodesOnRandomTree") { g_minNodesOnRandomTree = std::stoi(value); }
 		else if (key == "speedOnConduct") { g_speedOnConduct = std::stoi(value); }
 		else if (key == "g_verboseLocalSolutions") { g_verboseLocalSolutions = std::stoi(value) == 1 ? true : false; }
@@ -255,7 +264,7 @@ int main()
 
 		if (isStepByStepSimulatorFromFile)
 		{
-			std::ifstream inFile("simulator.txt");
+			std::ifstream inFile(g_simulatorFile);
 			std::ofstream outFile("results.txt");
 			g_debugLogOutput = &outFile;
 			//outFile << "Initial board: " << std::endl;
@@ -274,7 +283,7 @@ int main()
 		{
 			//cout << "Initial board: " << std::endl;
 			simulator.printBoard(cout);
-			simulator.autoSimulate(numStepsOnAutoSimulator, g_minPowerForWirelessSource, g_maxPowerForWirelessSource, resultsFileName);
+			simulator.autoSimulateWirelessCollector(numStepsOnAutoSimulator, g_minPowerForWirelessSource, g_maxPowerForWirelessSource, resultsFileName);
 		}
 	}
 

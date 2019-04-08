@@ -31,7 +31,7 @@ DIRECTION getOppositeDirection(const DIRECTION dir);
 struct SimulationContext
 {
 	// For performance reasons, we currently cache before a simulation how much data flow each leaf node will capture
-	std::unordered_map<TablePos, float> mLeafNodeToCaptureValue;
+	std::unordered_map<TablePos, float, TablePosHasher> mLeafNodeToCaptureValue;
 	bool getLeafNodeCapture(const TablePos& leafPos, float& outValue) const;
 };
 

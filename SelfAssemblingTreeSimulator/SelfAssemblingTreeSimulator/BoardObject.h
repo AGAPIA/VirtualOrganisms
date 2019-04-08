@@ -7,6 +7,7 @@
 #include "ExprGenerator.h"
 #include <set>
 #include <ostream>
+#include <map>
 
 #define INVALID_FLOW  -1000.0f
 
@@ -37,10 +38,10 @@ struct RentedResourceInfo
 	TablePos pos;
 	char symbol;
 
-	bool operator==(const RentedResourceInfo& other) const
-	{
-		return pos == other.pos;
-	}
+bool operator==(const RentedResourceInfo& other) const
+{
+	return pos == other.pos;
+}
 };
 
 namespace std
@@ -49,7 +50,7 @@ namespace std
 	{
 		size_t operator()(const RentedResourceInfo& resource) const
 		{
-			return std::hash<TablePos>()(resource.pos);
+			return TablePosHasher()(resource.pos);
 		}
 	};
 }
@@ -98,6 +99,101 @@ struct BoardObject
 		return m_board[row][col];
 	}
 
+
+#if SIMULATION_MODE==SIMULATE_PS_MODEL
+	// This is a wrapper for data structures and structures needed for publisher-subscriber model simulation
+	// inside a board object
+
+	struct MirrorNodeInfo
+	{
+		TablePos nodePos;															// The node position in the VO
+		TablePos parentPublisherPos;												// The position of the publisher that this node is mirroring
+		std::unordered_set<TablePos, TablePosHasher> setOfSubscribersUsingThis;		// How many subscribers are using this node
+
+		size_t getRefCount() const { return setOfSubscribersUsingThis.size(); }
+
+		MirrorNodeInfo(const TablePos& _nodePos) { nodePos = _nodePos; }
+		MirrorNodeInfo() {}
+
+		void addSubscriber(const TablePos& subscriberPos)
+		{
+			assert(setOfSubscribersUsingThis.find(subscriberPos) == setOfSubscribersUsingThis.end());
+			setOfSubscribersUsingThis.insert(subscriberPos);
+		}
+
+		void removeSubscriber(const TablePos& subscriberPos)
+		{
+			auto it = setOfSubscribersUsingThis.find(subscriberPos);
+			assert(it != setOfSubscribersUsingThis.end());
+			setOfSubscribersUsingThis.erase(it);
+		}
+
+		bool operator==(const MirrorNodeInfo& other) const
+		{
+			if (nodePos != other.nodePos)
+				return false;
+
+			if (parentPublisherPos != other.parentPublisherPos)
+				return false;
+
+			if (setOfSubscribersUsingThis.size() != other.setOfSubscribersUsingThis.size())
+				return false;
+
+			for (const TablePos& subscriberPos : setOfSubscribersUsingThis)
+			{
+				bool found = other.setOfSubscribersUsingThis.find(subscriberPos) != other.setOfSubscribersUsingThis.end();
+				if (!found)
+					return false;
+			}
+
+			return true;
+		}
+	};
+
+	struct MirrorNodeInfoHasher
+	{
+		std::size_t operator() (const MirrorNodeInfo& mirrorNodeInfo) const
+		{
+			return TablePosHasher()(mirrorNodeInfo.nodePos);
+		}
+	};
+
+	struct BoardPublisherSubscriberManager
+	{
+		BoardPublisherSubscriberManager(BoardObject* _parent);
+		BoardObject* parent;
+
+		// m_publisherPosToMirrorNodes[Ppos] = list {pos1, pos2, ...., posN} means that the 
+		// publisher located at position Ppos is replicated at positions pos1 pos2 ...posN in the VO
+		std::map<TablePos, std::set<TablePos>> m_publisherPosToMirrorNodes;
+
+		// This is an alternative collection of above, mapping from mirrors nodes to parent publisher and refcount
+		std::unordered_set<MirrorNodeInfo, MirrorNodeInfoHasher> m_mirrorNodesCollection;
+
+		std::unordered_set<TablePos, TablePosHasher> m_publishersCollection;
+		std::unordered_set<TablePos, TablePosHasher> m_subscribersCollection;
+
+		// Does mirroring support for publisher subscriber model
+		void solvePublishersSubscribersConnections(std::ostream* outStream);
+
+		void reset();
+
+		// Collects all nodes' positions in the VO
+		void collectAllNodePositionsInVO(std::vector<TablePos>& outNodes);
+
+		// Gets the closest VONode and distance to it
+		void closestVONodeToPosition(const TablePos& queryPos, const std::vector<TablePos>& voNodesPos, TablePos& outClosestNode, int& outClosestDistance);
+
+		// Called when remove / add a new subscriber or publisher
+		void onItemRemoved(const TablePos& pos, const bool removeAll);
+		void onItemAdd(const TablePos& pos, const SourceInfo& srcInfo);
+
+		// Print details about p/s
+		void printDetails(std::ostream& outStream);
+		void do_sanityChecks(); // Checks if all internal data structures are matching 
+	};
+#endif
+
 	BoardObject();
 	BoardObject(const BoardObject& other);
 	void operator=(const BoardObject& other);
@@ -116,6 +212,7 @@ struct BoardObject
 
 #endif
 
+	// Used for evaluating elastic model
 	struct ResourceAllocatedEval
 	{
 		ResourceAllocatedEval() : symbol(EMPTY_SYMBOL), flowBenefit(INVALID_FLOW) {}
@@ -208,7 +305,7 @@ struct BoardObject
 	void setAvailableSymbols(const std::vector<char>& allSymbols);
 
 	// A hash of sources with keys from TablePositions (no key collide guaranteed)
-	std::unordered_map<TablePos, SourceInfo> m_posToSourceMap;
+	std::unordered_map<TablePos, SourceInfo, TablePosHasher> m_posToSourceMap;
 
 	void resetCells(const bool resetSymbolsToo = true);
 	void reset(const bool withoutStatistics = false, const bool resetSymbolsToo = true);
@@ -430,6 +527,12 @@ private:
 
 	int m_rootRow = INVALID_POS; 
 	int m_rootCol = INVALID_POS;
+
+#if SIMULATION_MODE == SIMULATE_PS_MODEL
+public:
+	BoardPublisherSubscriberManager m_PSModeManager;
+
+#endif
 };
 
 

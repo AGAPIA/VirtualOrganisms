@@ -171,7 +171,14 @@ bool Simulator::initialize_fromFile(const char* fileToInitializeFrom)
 		TablePos pos;
 		SourceInfo src;
 		float srcPower = 0;
+		char charType = 'P';
+#if SIMULATION_MODE == SIMULATE_TREE_COLECTOR
 		inFile >> pos.row >> pos.col >> srcPower;
+#elif SIMULATION_MODE == SIMULATE_PS_MODEL
+		inFile >> pos.row >> pos.col >> charType >> src.serviceType >> srcPower;
+
+		src.sourceType = charType == 'S' || charType == 's' ? ST_SUBSCRIBER : ST_PUBLISHER;
+#endif
 		src.overridePower(srcPower);
 		addSource(pos, src);
 	}
@@ -232,9 +239,20 @@ void Simulator::doStepByStepSimulation(const bool writeHelperOutput, std::istrea
 {
 	if (writeHelperOutput)
 	{
+#if SIMULATION_MODE == SIMULATE_TREE_COLECTOR
 		outStream << "Options:\nE - Data flow simulation to determine flow per unit of time \n";
+#elif SIMULATION_MODE == SIMULATE_PS_MODEL
+		outStream << "Options:\nE - Simulate how many user we satisfy with current table";
+#endif
+
 		outStream << "O - Restructure then same as option E (to see restructure affects data flow\n";
+
+#if SIMULATION_MODE == SIMULATE_PS_MODEL
+		outStream << "Add/Remove/Modify publisher/subscriber: S \n";
+		outStream << "Mirroring support: T\n";
+#elif SIMULATION_MODE == SIMULATE_TREE_COLECTOR
 		outStream << "Add/Remove/Modify source: S \n";
+#endif
 		outStream << "Reorganize: R\n";
 		outStream << "Debug 24e7 model (IF ENABLED): 1 - Run GB 2-expand external 3-expand internal 4-optimize membrane G 5 - optimize by row/column cut  6 - optimize by corner cut\n";
 		outStream << "Undo: U \n";
@@ -274,7 +292,11 @@ void Simulator::doStepByStepSimulation(const bool writeHelperOutput, std::istrea
 			case 'E': // Nothing:
 			case 'e':
 			{
+#if SIMULATION_MODE==SIMULATE_PS_MODEL
+				doPublisherSubscriberSim_serial(false, outStream);
+#elif SIMULATION_MODE==SIMULATE_TREE_COLECTOR 
 				doDataFlowSimulation_serial(false, outStream);
+#endif
 				outStream << endl << endl;
 			}
 			break;
@@ -295,10 +317,10 @@ void Simulator::doStepByStepSimulation(const bool writeHelperOutput, std::istrea
 				addBoardInHistory(&m_board);
 
 				TablePos pos;
-				if (writeHelperOutput) { outStream << "Source ROW = "; }
+				if (writeHelperOutput) { outStream << "ROW = "; }
 				inStream >> pos.row;
 
-				if (writeHelperOutput) { outStream << "Source COL = "; }
+				if (writeHelperOutput) { outStream << "COL = "; }
 				inStream >> pos.col;
 
 				char innerEv = 'A';
@@ -318,8 +340,24 @@ void Simulator::doStepByStepSimulation(const bool writeHelperOutput, std::istrea
 					case 'A':
 					case 'a':
 					{
+						char type;
+						if (writeHelperOutput) { outStream << "P for publisher, S for subscriber"; }
+						inStream >> type;
+			
 						SourceInfo sourceInfo;
-						if (writeHelperOutput) { outStream << "Source power = "; }
+						if (type == 'P' || type == 'p')
+						{
+							sourceInfo.sourceType = ST_PUBLISHER;
+						}
+						else
+						{
+							sourceInfo.sourceType = ST_SUBSCRIBER;
+						}
+
+						if (writeHelperOutput) { outStream << "Service type: "; }
+						inStream >> sourceInfo.serviceType;
+
+						if (writeHelperOutput) { outStream << "Flow = "; }
 						float srcPower;
 						inStream >> srcPower;  
 						sourceInfo.overridePower(srcPower);
@@ -331,13 +369,18 @@ void Simulator::doStepByStepSimulation(const bool writeHelperOutput, std::istrea
 					case 'M':
 					case 'm':
 					{
+#if SIMULATION_MODE==SIMULATE_TREE_COLECTOR
 						SourceInfo sourceInfo;
-						if (writeHelperOutput) { outStream << "New Source power = "; }
+						if (writeHelperOutput) { outStream << "New Flow = "; }
 						float srcPower;
 						inStream >> srcPower;
 						sourceInfo.overridePower(srcPower);
 
 						result |= modifySource(pos, sourceInfo);
+#elif SIMULATE_PS_MODEL
+						if (writeHelperOutput) { outStream << "Not available for PS model ! Just delete the node and add anoter if really needed"; }
+						break;
+#endif
 					}
 					break;
 				}
@@ -362,6 +405,18 @@ void Simulator::doStepByStepSimulation(const bool writeHelperOutput, std::istrea
 				printBoard(outStream);
 			}
 			break;
+
+#if SIMULATION_MODE == SIMULATE_PS_MODEL
+			case 'T':
+			case 't':
+			{
+				addBoardInHistory(&m_board);
+				m_board.m_PSModeManager.solvePublishersSubscribersConnections(&outStream);
+				printBoard(outStream);
+			}
+			break;
+#endif
+
 #if RUNMODE == DIRECTIONAL_MODE
 			case '1':
 			{
@@ -484,7 +539,7 @@ struct LogStep
 	}
 };
 
-bool Simulator::autoSimulate(const int numSteps, int minPower, int maxPower, const char* resultsFileName)
+bool Simulator::autoSimulateWirelessCollector(const int numSteps, int minPower, int maxPower, const char* resultsFileName)
 {
 	ofstream outFile("result.txt", std::ofstream::out);
 	if (outFile.is_open() == false)
@@ -521,9 +576,7 @@ bool Simulator::autoSimulate(const int numSteps, int minPower, int maxPower, con
 			auto& mapOfSources = m_board.m_posToSourceMap;
 			if (mapOfSources.empty() || choice <= 8)
 			{
-				SourceInfo src;
-				float newPower = (float)randRange(minPower, maxPower);
-				src.overridePower(newPower);
+				SourceInfo src = getRandomSourceInfo();
 				TablePos pos(randRange(0, MAX_ROWS-1), randRange(0, MAX_COLS-1));
 				
 				addSource(pos, src);
@@ -534,9 +587,7 @@ bool Simulator::autoSimulate(const int numSteps, int minPower, int maxPower, con
 			}
 			else if (choice <= 9)
 			{
-				SourceInfo src;
-				const float newPower = (float)randRange(minPower, maxPower);
-				src.overridePower(newPower);
+				SourceInfo src = getRandomSourceInfo();
 
 				const TablePos selectedPos = m_board.selectRandomSource();
 				if (selectedPos.col != INVALID_POS && selectedPos.row != INVALID_POS)
@@ -583,6 +634,13 @@ void Simulator::undoBoard()
 
 	m_root->onRootMsgBroadcastStructure(&m_board);
 }
+
+#if SIMULATION_MODE==SIMULATE_PS_MODEL
+void Simulator::doPublisherSubscriberSim_serial(const bool withReconfiguration, std::ostream& output)
+{
+
+}
+#endif
 
 void Simulator::doDataFlowSimulation_serial(const bool withReconfiguration, std::ostream& output)
 {
