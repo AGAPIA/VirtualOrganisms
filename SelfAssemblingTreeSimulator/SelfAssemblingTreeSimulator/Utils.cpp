@@ -121,7 +121,7 @@ void trimCommentsAndWhiteSpaces(std::string& str)
 	str.erase(str.begin() + lastNonWhiteSpace + 1, str.end());
 }
 
-void SourceInfo::AddConnectionFromPublisherToConsumer(const TablePos& thisPos, const TablePos& otherPos, SourceInfo& other)
+void SourceInfo::AddConnectionFromPublisherToSubscriber(const TablePos& thisPos, const TablePos& otherPos, SourceInfo& other, const SourceInfo::LinkInfo& linkData)
 {
 	assert(other.sourceType == ST_PUBLISHER && "Please call this only for publisher. Consumer logic will be treated from publishers one automatically");
 	assert((this->getRemainingPower() > 0 && other.getRemainingPower() > 0) && "You are trying two connect two nodes but at least one of them has 0 remaining capacity");
@@ -132,15 +132,11 @@ void SourceInfo::AddConnectionFromPublisherToConsumer(const TablePos& thisPos, c
 	assert(itInOther == other.m_connectedTo.end() && "This connection already exists in other");
 	assert(itInThis == this->m_connectedTo.end() && "This connection already exists in this");
 
-	// Greedy, take as much as possible from source and destination
-	LinkInfo linkInfo;
-	linkInfo.flow = std::min(this->getRemainingPower(), other.getRemainingPower());
+	this->m_connectedTo.insert(std::make_pair(otherPos, linkData));
+	this->m_usedPower += linkData.flow;
 
-	this->m_connectedTo.insert(std::make_pair(otherPos, linkInfo));
-	this->m_usedPower += linkInfo.flow;
-
-	other.m_connectedTo.insert(std::make_pair(thisPos, linkInfo));
-	other.m_usedPower += linkInfo.flow;
+	other.m_connectedTo.insert(std::make_pair(thisPos, linkData));
+	other.m_usedPower += linkData.flow;
 
 	this->do_sanitycheck_powerUsed();
 	other.do_sanitycheck_powerUsed();

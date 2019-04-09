@@ -204,7 +204,7 @@ void BoardObject::updateInternalCellsInfo()
 	assert(rootCell->isRented() == false); // Jesus, i hope not :)
 	m_rentedResources.clear();
 
-#if RUNMODE == DIRECTIONAL_MODE
+#if STRUCTURE_MODE == DIRECTIONAL_MODE
 	// Points where the direction is changed
 	std::vector<TablePos> inflexionPoints;
 	getInflexionPointAndConnectMembrane(inflexionPoints);
@@ -261,7 +261,7 @@ void BoardObject::updateInternalCellsInfo()
 	rootNode->m_column = m_rootCol;
 }
 
-#if RUNMODE == DIRECTIONAL_MODE
+#if STRUCTURE_MODE == DIRECTIONAL_MODE
 
 CellType BoardObject::decideCellType(const Cell* startCell, const DIRECTION dir)
 {
@@ -507,7 +507,7 @@ void BoardObject::internalCreateLinks(Cell* prevCell, const DIRECTION dir, const
 		addRentedResource(currCell->m_symbol, TablePos(row, col));
 	}
 
-#if RUNMODE == DIRECTIONAL_MODE
+#if STRUCTURE_MODE == DIRECTIONAL_MODE
 	assert(false);
 	/*
 	if (dir == DIR_LEFT)
@@ -537,7 +537,7 @@ void BoardObject::internalCreateLinks(Cell* prevCell, const DIRECTION dir, const
 		currCell->m_boardView = prevCell->m_boardView;
 	}
 
-#if RUNMODE == DIRECTIONAL_MODE
+#if STRUCTURE_MODE == DIRECTIONAL_MODE
 	assert(false); // TODO
 #endif
 
@@ -558,7 +558,7 @@ void BoardObject::copyDataFrom(const BoardObject& other)
 			m_board[i][j].m_boardView = this;
 		}
 
-//#if RUNMODE == DIRECTIONAL_MODE
+//#if STRUCTURE_MODE == DIRECTIONAL_MODE
 	setRootLocation(other.m_rootRow, other.m_rootCol);
 //#endif
 
@@ -588,7 +588,7 @@ BoardObject::BoardObject()
 	, m_numTicksRemainingToUpdateSources(0)
 	, m_PSModeManager(this)
 {
-#if RUNMODE == DIRECTIONAL_MODE
+#if STRUCTURE_MODE == DIRECTIONAL_MODE
 	const int rootColumn = rand() % (MAX_COLS / 3);
 	const int rootRow = rand() % (MAX_ROWS / 3);
 	setRootLocation(rootRow, rootColumn);
@@ -642,11 +642,15 @@ void BoardObject::reset(const bool withoutStatistics, const bool resetSymbolsToo
 
 float BoardObject::doDataFlowSimulation_serial_WITHOUT_SIDE_EFFECTS(const int ticksToSimulate)
 {
+#if SIMULATION_MODE==SIMULATE_PS_MODEL
+	const float baselineCurrentFlow = m_PSModeManager.getCurrentPowerUsed();
+#else 
 	this->doDataFlowSimulation_serial(1, false);
 	const float baselineCurrentFlow = this->getLastSimulationAvgDataFlowPerUnit();
 	this->retractLastSimTickFlowRecord(); // Retract it since we don't propagate changes
+#endif
 
-#if RUNMODE == DIRECTIONAL_MODE
+#if STRUCTURE_MODE == DIRECTIONAL_MODE
 	Cell& cellBelowRoot = getRootCell()->m_boardView->m_board[m_rootRow - 1][m_rootCol];
 	cellBelowRoot.resetCapacityUsedInSubtree();
 #else
@@ -658,8 +662,14 @@ float BoardObject::doDataFlowSimulation_serial_WITHOUT_SIDE_EFFECTS(const int ti
 
 void BoardObject::doDataFlowSimulation_serial(const int ticksToSimulate, const bool isRealTick, const bool considerForStatistics /*=true*/)
 {
+	// Init simulation
 	Cell* root = getRootCell();
 	root->beginSimulation();
+
+#if SIMULATION_MODE==SIMULATE_PS_MODEL
+	m_PSModeManager.reset();
+	m_PSModeManager.solvePublishersSubscribersConnections(nullptr);
+#endif
 
 	for (int i = 0; i < ticksToSimulate; i++)
 	{
@@ -692,12 +702,22 @@ void BoardObject::collectAllNodesFromRoot(const Cell* subtreeRoot, std::vector<C
 
 void BoardObject::simulateTick_serial(const bool considerForStatistics /* = true */)
 {
+#if SIMULATION_MODE==SIMULATE_PS_MODEL
+	const float powerUsed = m_PSModeManager.getCurrentPowerUsed();
+
+	if (considerForStatistics)
+	{
+		Cell* root = getRootCell();
+		root->addNewFlowRecord(powerUsed);
+	}
+
+#elif SIMULATION_MODE==SIMULATE_TREE_COLECTOR
 	// Step 0: Find how much flow each leaf (capture) cell will get from the available sources
 	SimulationContext simContext;
 	fillSimulationContext(simContext);
 
 	// If not directional mode, easy step: capture from root only
-#if RUNMODE != DIRECTIONAL_MODE
+#if STRUCTURE_MODE != DIRECTIONAL_MODE
 	Cell* root = getRootCell();
 	root->simulateTick_serial(simContext);
 #else
@@ -808,6 +828,7 @@ void BoardObject::simulateTick_serial(const bool considerForStatistics /* = true
 		root->addNewFlowRecord(totalDonatedFlow);
 	}
 #endif
+#endif // simulation mode
 }
 
 template <typename T>
@@ -1054,7 +1075,7 @@ void BoardObject::cutSubtree(const int row, const int col, SubtreeInfo& subtree)
 		Cell& targetCell = m_board[row + offsetAndSymbol.rowOff][col + offsetAndSymbol.colOff];
 
 		// Disable connection to its parent then reset
-#if RUNMODE == DIRECTIONAL_MODE
+#if STRUCTURE_MODE == DIRECTIONAL_MODE
 		assert(false);
 #else
 		Cell* parentCell = targetCell.m_parent;
@@ -1074,7 +1095,7 @@ void BoardObject::cutSubtree(const int row, const int col, SubtreeInfo& subtree)
 
 void BoardObject::internalCutSubtree(const Cell& currCell, const int rowOff, const int colOff, SubtreeInfo& outSubtree)
 {
-#if RUNMODE == DIRECTIONAL_MODE
+#if STRUCTURE_MODE == DIRECTIONAL_MODE
 	assert(false); // TODO
 #endif
 
@@ -1288,7 +1309,7 @@ void BoardObject::setExprOnRow(const int row, const int startCol, const std::str
 		assert(thisCell->isFree() && "THere is a bug ! I'm overriding the same positions here !");
 		thisCell->setSymbol(expr[exprStrIter]);
 
-#if RUNMODE == DIRECTIONAL_MODE
+#if STRUCTURE_MODE == DIRECTIONAL_MODE
 		assert(false);
 #else
 		prevNodeOnRow->m_left = thisCell;
@@ -1311,7 +1332,7 @@ void BoardObject::setExprOnCol(const int col, const int startRow, const std::str
 		assert(thisCell->isFree() && "There is a bug ! I'm overriding the same positions here !");
 		thisCell->setSymbol(expr[i]);
 
-#if RUNMODE == DIRECTIONAL_MODE
+#if STRUCTURE_MODE == DIRECTIONAL_MODE
 		assert(false);
 #else
 		prevNodeOnCol->m_down = thisCell;
@@ -1362,7 +1383,7 @@ bool BoardObject::internalPropagateSourceEvent(const Cell::BroadcastEventType sr
 
 	bool childResuls = true;
 
-#if RUNMODE == DIRECTIONAL_MODE
+#if STRUCTURE_MODE == DIRECTIONAL_MODE
 	if (cell->isRoot())
 	{
 		// Did we come back to the root ?
@@ -1433,7 +1454,7 @@ int BoardObject::getOccupiedItemsOnCol(const int col, const int startRow, const 
 //  How many items are on this column below the given start row
 int BoardObject::getFreeItemsOnCol(const int col, const int startRow, const bool down) const
 {
-#if RUNMODE == DIRECTIONAL_MODE
+#if STRUCTURE_MODE == DIRECTIONAL_MODE
 	int freeItems = 0;
 	const int dirOffset = (down ? 1 : -1);
 
@@ -1502,7 +1523,7 @@ int BoardObject::getOccupiedItemsOnRow(const int row, const int startCol, const 
 //  How many items are on this row in the right side from the given start column
 int BoardObject::getFreeItemsOnRow(const int row, const int startCol, const bool left) const
 {
-#if RUNMODE == DIRECTIONAL_MODE
+#if STRUCTURE_MODE == DIRECTIONAL_MODE
 	int freeItems = 0;
 	const int dirOffset = (left ? -1 : 1);
 
@@ -1631,7 +1652,7 @@ void BoardObject::generateRow(const int pivotCol, const int rowStart, const int 
 	}
 }
 
-#if RUNMODE == DIRECTIONAL_MODE
+#if STRUCTURE_MODE == DIRECTIONAL_MODE
 
 // Try a few random variants to produce according to iterator at nextPointer,
 // Checks inside if produced thing is fine and if the neighb rule is satisfied
@@ -2649,7 +2670,7 @@ bool BoardObject::generateRandomBoard(const int numDepthBranches, const int numS
 	{
 		reset(true);
 
-#if RUNMODE == LEFTRIGHTONLY_MODE
+#if STRUCTURE_MODE == LEFTRIGHTONLY_MODE
 		const int maxAttemptsForRoot = 10; // Just to be sure that we don;t block forever in tehe case of a wrong input
 										   // INstantiate two expression generators 
 
@@ -2735,7 +2756,7 @@ bool BoardObject::generateRandomBoard(const int numDepthBranches, const int numS
 	return false;
 }
 
-#if RUNMODE == DIRECTIONAL_MODE
+#if STRUCTURE_MODE == DIRECTIONAL_MODE
 bool BoardObject::optimizeMembrane_byCutRowCols()
 {
 	int outRowToCut = INVALID_POS, outColToCut = INVALID_POS;
@@ -3148,7 +3169,7 @@ void BoardObject::reorganize(ostream& outStream)
 {
 	g_debugLogOutput = &outStream;
 
-#if RUNMODE == DIRECTIONAL_MODE
+#if STRUCTURE_MODE == DIRECTIONAL_MODE
 	runGarbageCollector(g_energyLossThreshold, outStream);
 
 	expandInternalTrees();
@@ -3250,7 +3271,7 @@ void BoardObject::fillSimulationContext(SimulationContext& simContext) const
 	std::vector<TablePos> leafNodes;
 
 	const Cell* root = getRootCell();
-#if RUNMODE == DIRECTIONAL_MODE
+#if STRUCTURE_MODE == DIRECTIONAL_MODE
 	// In directional mode start below root and follow the links
 	const Cell* cellBelowRoot = &root->m_boardView->m_board[root->m_row + 1][root->m_column];
 	gatherLeafNodes(cellBelowRoot, leafNodes);

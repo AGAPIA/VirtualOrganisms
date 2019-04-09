@@ -1,7 +1,0 @@
-﻿  BoardObject.cpp
-  BoardObject_PSMode.cpp
-  Cell.cpp
-  SimulatorBoard.cpp
-  main.cpp
-  Generating Code...
-  SelfAssemblingTreeSimulator.vcxproj -> C:\Users\CiprianIonutPaduraru\Documents\GitHub\VirtualOrganisms\SelfAssemblingTreeSimulator\x64\Debug\SelfAssemblingTreeSimulator.exe

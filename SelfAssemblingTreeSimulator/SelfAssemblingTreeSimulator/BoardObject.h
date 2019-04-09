@@ -172,17 +172,18 @@ struct BoardObject
 
 		std::unordered_set<TablePos, TablePosHasher> m_publishersCollection;
 		std::unordered_set<TablePos, TablePosHasher> m_subscribersCollection;
-
-		// Does mirroring support for publisher subscriber model
+		
+		// Connects publishers and subscriber using a greedy approach
+		// Does mirroring support if needed and possible
 		void solvePublishersSubscribersConnections(std::ostream* outStream);
 
 		void reset();
 
 		// Collects all nodes' positions in the VO
-		void collectAllNodePositionsInVO(std::vector<TablePos>& outNodes);
+		void collectNodesForMirroring(std::unordered_set<TablePos, TablePosHasher>& outNodes);
 
 		// Gets the closest VONode and distance to it
-		void closestVONodeToPosition(const TablePos& queryPos, const std::vector<TablePos>& voNodesPos, TablePos& outClosestNode, int& outClosestDistance);
+		void closestVONodeToPosition(const TablePos& queryPos, const std::unordered_set<TablePos, TablePosHasher>&  voNodesPos, TablePos& outClosestNode, int& outClosestDistance);
 
 		// Called when remove / add a new subscriber or publisher
 		void onItemRemoved(const TablePos& pos, const bool removeAll);
@@ -191,6 +192,20 @@ struct BoardObject
 		// Print details about p/s
 		void printDetails(std::ostream& outStream);
 		void do_sanityChecks(); // Checks if all internal data structures are matching 
+
+		float getCurrentPowerUsed() const;
+
+	private:
+
+		// Sort them by remaining flow, and filter those with 0 cap
+		void sortAndFilterPublishersAndSubscribers(std::vector<TablePos>& subscribers, std::vector<TablePos>& publishers, std::unordered_set<TablePos, TablePosHasher>& voNodes, const bool forMirroring);
+
+		// Solves connections directly and by mirroring functions
+		void solveDirectConnections(std::vector<TablePos>& subscribers, std::vector<TablePos>& publishers);
+		void solveMirrorConnections(std::vector<TablePos>& subscribers, std::vector<TablePos>& publishers, std::unordered_set<TablePos, TablePosHasher>& mirroringSuitableNodes);
+
+		// Connects startPos and subscriberPos by our heuristics. Suppose that startPos is a publisher or mirror
+		bool connectNodesByHeuristic(const TablePos& startPos, const TablePos& subscriberPos, const std::unordered_set<TablePos, TablePosHasher>& mirroringSuitableNodes, std::vector<TablePos> outPath);
 	};
 #endif
 
@@ -199,7 +214,7 @@ struct BoardObject
 	void operator=(const BoardObject& other);
 	virtual ~BoardObject();
 
-#if RUNMODE == DIRECTIONAL_MODE
+#if STRUCTURE_MODE == DIRECTIONAL_MODE
 	enum ProduceItemResult { P_RES_SUCCEED, P_RES_FAILED, P_RES_FINISHED };
 
 	// Try a few random variants to produce according to iterator at nextPointer,
@@ -232,7 +247,7 @@ struct BoardObject
 	int getNumNeighboors(const TablePos& pos) const;
 	int getNumNeighboors(const int row, const int column) const { return getNumNeighboors(TablePos(row, column)); }
 
-#if RUNMODE == DIRECTIONAL_MODE
+#if STRUCTURE_MODE == DIRECTIONAL_MODE
 	// Get all cells on membrane
 	void getMembraneCells(std::vector<Cell*>& membraneCells);
 
@@ -417,7 +432,7 @@ struct BoardObject
 
 private:
 
-#if RUNMODE == DIRECTIONAL_MODE
+#if STRUCTURE_MODE == DIRECTIONAL_MODE
 	CellType getCellTypeRelativeToMembrane(const int row, const int col) const;
 
 
@@ -497,7 +512,7 @@ private:
 	// Helper to perform a deep copy of data from another board object
 	void copyDataFrom(const BoardObject& other);
 
-#if RUNMODE == DIRECTIONAL_MODE
+#if STRUCTURE_MODE == DIRECTIONAL_MODE
 	// Used inside update links
 
 	// Updates the membrane by giving the min and max points of the rectangle defining membrane

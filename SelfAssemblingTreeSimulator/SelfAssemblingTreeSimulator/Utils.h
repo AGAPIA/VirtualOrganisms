@@ -157,7 +157,7 @@ struct SourceInfo
 	float getRemainingPower() const { return currentPower - m_usedPower; }
 
 	// Both publishers and subscribers will call this. It will mutate both this and other source info
-	void AddConnectionFromPublisherToConsumer(const TablePos& thisPos, const TablePos& otherPos, SourceInfo& other);
+	void AddConnectionFromPublisherToSubscriber(const TablePos& thisPos, const TablePos& otherPos, SourceInfo& other, const SourceInfo::LinkInfo& linkData);
 
 	// This is called when one side is removed (this pointer), and needs to update other
 	void RemoveConnectionTo(const TablePos& thisPos, const TablePos& otherPos, SourceInfo& other);

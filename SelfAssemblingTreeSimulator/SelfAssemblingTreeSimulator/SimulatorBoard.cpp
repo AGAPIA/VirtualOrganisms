@@ -417,7 +417,7 @@ void Simulator::doStepByStepSimulation(const bool writeHelperOutput, std::istrea
 			break;
 #endif
 
-#if RUNMODE == DIRECTIONAL_MODE
+#if STRUCTURE_MODE == DIRECTIONAL_MODE
 			case '1':
 			{
 				addBoardInHistory(&m_board);
@@ -638,7 +638,8 @@ void Simulator::undoBoard()
 #if SIMULATION_MODE==SIMULATE_PS_MODEL
 void Simulator::doPublisherSubscriberSim_serial(const bool withReconfiguration, std::ostream& output)
 {
-
+	output << "\n\n\n======= Checking the number of publishers and subscribers connected =========== \n";
+	output << "Power used in this moment: " << m_board.m_PSModeManager.getCurrentPowerUsed();
 }
 #endif
 
@@ -948,7 +949,12 @@ void Simulator::simulateFlowScenario(BoardObject& board, const float probForSour
 
 							//board.printBoard(outStream);
 
-							const float newFlow = board.getLastSimulationAvgDataFlowPerUnit();
+							const float newFlow =
+#if SIMULATION_MODE==SIMULATE_PS_MODEL
+								board.m_PSModeManager.getCurrentPowerUsed();
+#elif SIMULATION_MODE==SIMULATE_TREE_COLECTOR
+								board.getLastSimulationAvgDataFlowPerUnit();
+#endif
 
 							// If the flow doesn't improve, stop reorganizing. Otherwise, reorganize on the next tick too
 							if (newFlow <= prevFlow)

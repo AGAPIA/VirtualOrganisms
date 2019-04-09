@@ -166,7 +166,7 @@ struct Cell
 		EVENT_SOURCE_MODIFY,
 	};
 
-#if RUNMODE != DIRECTIONAL_MODE
+#if STRUCTURE_MODE != DIRECTIONAL_MODE
 	Cell *m_parent;
 #endif
 
@@ -178,7 +178,7 @@ struct Cell
 		return g_symbolToDirection.find(symbol)->second;
 	}
 
-//#if RUNMODE == DIRECTIONAL_MODE
+//#if STRUCTURE_MODE == DIRECTIONAL_MODE
 	CellType m_cellType = CELL_NOTSET;
 //#endif
 
@@ -215,7 +215,7 @@ struct Cell
 	// You can specify targetChildCellType which considers only the child cells that has that particular type 
 	void captureFromChildren(const float capRemaining, const CellType targetChildCellType = CELL_NOTSET);
 
-#if RUNMODE == DIRECTIONAL_MODE
+#if STRUCTURE_MODE == DIRECTIONAL_MODE
 	// Give a maximum amount of flow to donate to this subtree
 	// Return how much it used from that maximum
 	float donateFlow(const float maxFlowToDonate);
@@ -229,7 +229,7 @@ struct Cell
 	{
 		// This cell is removed from the board.
 		// If it has a parent then remove the link between parent and it
-#if RUNMODE == DIRECTIONAL_MODE
+#if STRUCTURE_MODE == DIRECTIONAL_MODE
 		if (m_prevUp)
 			m_prevUp->m_down = nullptr;
 
@@ -316,7 +316,7 @@ struct Cell
 
 	friend struct Simulator;
 
-#if RUNMODE == DIRECTIONAL_MODE
+#if STRUCTURE_MODE == DIRECTIONAL_MODE
 	bool hasNoPrevNode() const
 	{
 		return m_prevDown == nullptr && m_prevRight == nullptr && m_prevUp == nullptr && m_prevLeft == nullptr;
@@ -325,14 +325,14 @@ struct Cell
 
 	bool isLeaf() const 
 	{
-#if RUNMODE == DIRECTIONAL_MODE
+#if STRUCTURE_MODE == DIRECTIONAL_MODE
 		return m_cellType == CELL_EXTERIOR && hasNoPrevNode();
 #else
 		return m_left == nullptr && m_down == nullptr;
 #endif
 	}
 
-#if RUNMODE == DIRECTIONAL_MODE
+#if STRUCTURE_MODE == DIRECTIONAL_MODE
 	bool isInteriorLeaf() const
 	{
 		return m_cellType == CELL_INTERIOR && hasNoPrevNode();

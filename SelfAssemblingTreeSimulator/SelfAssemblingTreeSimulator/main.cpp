@@ -42,7 +42,7 @@ int g_simulateOptimalVsRandomFlowSampleCount = 0;
 int g_avgTickBetweenSourceEvents = 0;
 int g_maxResourcesToRent = 1;
 char* g_simulatorFile = "simulator_psmodel.txt";		// The file to use as simulation steps
-
+int g_maxDistanceToConnectNodes = 8;
 
 bool g_verboseBestGatheredSolutions = true; // print the best gathered solutions
 bool g_verboseLocalSolutions = true; // #define VERBOSE_LOCALSOLUTIONS	// print the local solutions from each cell
@@ -168,6 +168,7 @@ void readInput(const char* configFileName)
 		else if (key == "fileToInitializeFrom") { fileToInitializeFrom = strdup(value.c_str()); }
 		else if (key == "resultsFileName") { resultsFileName = strdup(value.c_str()); }
 		else if (key == "g_simulatorFile") { g_simulatorFile = strdup(value.c_str()); }
+		else if (key == "g_maxDistanceToConnectNodes") { g_maxDistanceToConnectNodes = std::stoi(value); }
 		else if (key == "numStepsOnAutoSimulator") { numStepsOnAutoSimulator  = std::stoi(value); }
 		else if (key == "minPowerForWirelessSource") { g_minPowerForWirelessSource = std::stoi(value); }
 		else if (key == "maxPowerForWirelessSource") { g_maxPowerForWirelessSource = std::stoi(value); }

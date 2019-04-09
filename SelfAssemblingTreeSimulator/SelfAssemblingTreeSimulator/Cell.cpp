@@ -94,7 +94,7 @@ Cell::Cell() : m_bufferedData((float)g_maxFlowPerCell), m_flowStatistics(nullptr
 
 bool Cell::isRoot() const
 {
-#if RUNMODE != DIRECTIONAL_MODE
+#if STRUCTURE_MODE != DIRECTIONAL_MODE
 	//assert(m_row != 0 && m_column != MAX_COLS - 1);
 	return m_parent == nullptr;
 #else
@@ -145,12 +145,12 @@ void Cell::operator=(const Cell& other)
 	m_column = other.m_column;
 	m_isRented = other.m_isRented;
 
-#if RUNMODE == DIRECTIONAL_MODE
+#if STRUCTURE_MODE == DIRECTIONAL_MODE
 	m_cellType = other.m_cellType;
 #endif
 
 	m_boardView = nullptr;
-#if RUNMODE != DIRECTIONAL_MODE
+#if STRUCTURE_MODE != DIRECTIONAL_MODE
 	m_parent = nullptr;
 #endif
 	m_left = m_down = m_right = m_up = nullptr;
@@ -159,7 +159,7 @@ void Cell::operator=(const Cell& other)
 
 void Cell::resetLinks()
 {
-#if RUNMODE != DIRECTIONAL_MODE
+#if STRUCTURE_MODE != DIRECTIONAL_MODE
 	m_parent = nullptr;
 #endif
 
@@ -185,7 +185,7 @@ void Cell::reset(const bool resetSymbolToo /*= true*/)
 	m_isRented = false;
 	m_lastEnergyConsumedStat = 0.0f;
 
-#if RUNMODE == DIRECTIONAL_MODE
+#if STRUCTURE_MODE == DIRECTIONAL_MODE
 	m_cellType = CELL_NOTSET;
 #endif
 }
@@ -193,7 +193,7 @@ void Cell::reset(const bool resetSymbolToo /*= true*/)
 /*
 void Cell::broadcastMessage(const BroadcastEventType eventType, const BroadcastMsgParams& broadcastParams, const int row, int const col, const int depth)
 {
-#if RUNMODE == DIRECTIONAL_MODE
+#if STRUCTURE_MODE == DIRECTIONAL_MODE
 	if (isRoot())
 	{
 
@@ -225,7 +225,7 @@ void Cell::broadcastMessage(const BroadcastEventType eventType, const BroadcastM
 void Cell::onMsgBroadcastStructure(BoardObject* structure)
 {
 
-#if RUNMODE == DIRECTIONAL_MODE
+#if STRUCTURE_MODE == DIRECTIONAL_MODE
 	if (isRoot())
 		return;
 
@@ -258,7 +258,7 @@ void Cell::onMsgBroadcastStructure(BoardObject* structure)
 
 void Cell::onRootMsgBroadcastStructure(BoardObject* structure)
 {
-#if RUNMODE == DIRECTIONAL_MODE
+#if STRUCTURE_MODE == DIRECTIONAL_MODE
 	// Get the cell below and send it the stuff. It will send further the structure
 	// Can get it from board since Root is using the main (real) board while the others have a private copy. 
 	Cell* prev = &structure->m_board[m_row + 1][m_column];
@@ -285,7 +285,7 @@ void Cell::onMsgDiscoverStructure(int currRow, int currCol, int depth)
 	m_row = currRow;
 	m_column = currCol;
 
-#if RUNMODE == DIRECTIONAL_MODE
+#if STRUCTURE_MODE == DIRECTIONAL_MODE
 	if (isRoot())
 	{
 		// Start from below and follow previous links
@@ -316,7 +316,7 @@ void Cell::onMsgDiscoverStructure(int currRow, int currCol, int depth)
 
 void Cell::onRootMsgReorganize()
 {
-#if RUNMODE == DIRECTIONAL_MODE
+#if STRUCTURE_MODE == DIRECTIONAL_MODE
 	assert(m_column == g_247eModelRootCol && m_row == g_247eModelRootRow);
 #else
 	assert(m_column == MAX_COLS - 1 && m_row == 0);	// Just a check for sanity :)
@@ -511,7 +511,7 @@ void Cell::fillChildrenList(Cell* children[], const bool shuffleList /* = false*
 {
 	//assert((sizeof(children) / sizeof(children[0])) == DIR_COUNT);
 
-#if RUNMODE == DIRECTIONAL_MODE
+#if STRUCTURE_MODE == DIRECTIONAL_MODE
 	for (int dirIter = 0; dirIter < DIR_COUNT; dirIter++)
 	{
 		const int rowOffset = DIR_OFFSET[dirIter].row;
@@ -535,7 +535,7 @@ void Cell::fillFollowersList(Cell* followers[], const bool shuffleList /*= false
 {
 	//assert((sizeof(followers) / sizeof(followers[0])) == DIR_COUNT);
 
-#if RUNMODE == DIRECTIONAL_MODE
+#if STRUCTURE_MODE == DIRECTIONAL_MODE
 	for (int dirIter = 0; dirIter < DIR_COUNT; dirIter++)
 	{
 		const int rowOffset = DIR_OFFSET[dirIter].row;
@@ -574,7 +574,7 @@ void Cell::captureFromChildren(const float capRemaining, const CellType targetCe
 		const Cell* child = children[i];
 
 		if (child == nullptr 
-#if RUNMODE == DIRECTIONAL_MODE
+#if STRUCTURE_MODE == DIRECTIONAL_MODE
 			|| (targetCellType != CELL_NOTSET && child->m_cellType != targetCellType)
 #endif
 		)
@@ -610,7 +610,7 @@ void Cell::captureFromChildren(const float capRemaining, const CellType targetCe
 // physical processes).
 void Cell::simulateTick_serial(const SimulationContext& simContext)
 {
-#if RUNMODE == DIRECTIONAL_MODE
+#if STRUCTURE_MODE == DIRECTIONAL_MODE
 	assert(m_cellType == CELL_EXTERIOR && "In directional mode, only the external cells can capture something");
 #endif
 
@@ -636,7 +636,7 @@ void Cell::simulateTick_serial(const SimulationContext& simContext)
 	// Then capture their data 
 	captureDataFlow(simContext);
 
-#if RUNMODE != DIRECTIONAL_MODE
+#if STRUCTURE_MODE != DIRECTIONAL_MODE
 	if (isRoot())
 	{
 		const float currRootsDataSize = m_bufferedData.getCurrentCap();
@@ -909,7 +909,7 @@ bool Cell::root_checkRemoveResources(std::ostream& outDebugStream)
 	return false;
 }
 
-#if RUNMODE == DIRECTIONAL_MODE
+#if STRUCTURE_MODE == DIRECTIONAL_MODE
 float Cell::donateFlow(const float maxFlowToDonate)
 {
 	// IMPORTANT NODE: the buffering data semantic for internal nodes acts as a flow capture limiter per tick
