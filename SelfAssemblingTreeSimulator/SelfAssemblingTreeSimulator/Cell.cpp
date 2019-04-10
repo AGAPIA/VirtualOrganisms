@@ -316,7 +316,7 @@ void Cell::onMsgDiscoverStructure(int currRow, int currCol, int depth)
 #endif
 }
 
-float Cell::onRootMsgReorganize()
+float Cell::onRootMsgReorganize(bool isInAutosimulation)
 {
 #if RUNMODE == DIRECTIONAL_MODE
 	assert(m_column == g_247eModelRootCol && m_row == g_247eModelRootRow);
@@ -328,6 +328,9 @@ float Cell::onRootMsgReorganize()
 	{
 		return -1.0f;
 	}
+
+	if (isInAutosimulation)
+		(*g_debugLogOutput) << "\n\n-------------------------------- Start Simulation Source Prediction ----------------------------------\n" << std::endl;
 
 	// Allocate an array for results - TODO: optimize we should know easily how many nodes are in the tree 
 	std::vector<AvailablePosInfoAndDeltaScore> localBestResults;
@@ -358,9 +361,11 @@ float Cell::onRootMsgReorganize()
 		m_boardView->doDataFlowSimulation_serial(1);
 		const float currentScore = (float)m_boardView->getLastSimulationAvgDataFlowPerUnit();
 
+
+		const AvailablePosInfoAndDeltaScore& selectedOpt = localBestResults[maxIndex];
+
 		std::ostringstream strOut;
 		strOut << "\n-----  Best solutions on root !!:  ----- \n";
-		const AvailablePosInfoAndDeltaScore& selectedOpt = localBestResults[maxIndex];
 		strOut << "ROOT: Local best option from children -  " << " Cell: (" << selectedOpt.selectedRow << ", " << selectedOpt.selectedColumn << ") " << selectedOpt << "\n";
 		strOut << "Other options: ";
 
@@ -383,7 +388,6 @@ float Cell::onRootMsgReorganize()
 		{
 			strOut << " !! NEW AVG FLOW: " << (int)maxScore << std::endl;
 		}
-
 		*g_debugLogOutput << strOut.str() << " \n\n";
 	}
 

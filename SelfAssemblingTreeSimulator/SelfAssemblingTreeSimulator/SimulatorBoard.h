@@ -121,7 +121,7 @@ private:
 	TablePos getSourcePosByNormalDistribution();
     TablePos getSunPosition() { return m_sunPos; }
 
-	bool simulateSourcePrediction(Cell::BroadcastEventType _eventType, BoardObject& _board, float& outAvgFlow, int _tickOfDay, const bool _withReconfiguration = false);
+	void simulateSourcePrediction(Cell::BroadcastEventType _eventType, BoardObject& _board, float& outAvgFlowWithReconfig, float& avgFlowWithoutReconfig, int _tickOfDay);
 };
 
 

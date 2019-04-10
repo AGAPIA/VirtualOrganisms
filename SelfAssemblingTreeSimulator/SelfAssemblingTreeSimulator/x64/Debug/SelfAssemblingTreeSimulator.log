@@ -1,2 +1,3 @@
-﻿  BoardObject.cpp
+﻿  SimulatorBoard.cpp
+c:\users\ciprianionutpaduraru\source\repos\agapia\virtualorganisms\selfassemblingtreesimulator\selfassemblingtreesimulator\simulatorboard.cpp(1215): warning C4267: 'argument': conversion from 'size_t' to 'int', possible loss of data
   SelfAssemblingTreeSimulator.vcxproj -> C:\Users\CiprianIonutPaduraru\source\repos\AGAPIA\VirtualOrganisms\SelfAssemblingTreeSimulator\x64\Debug\SelfAssemblingTreeSimulator.exe

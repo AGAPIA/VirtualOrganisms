@@ -291,7 +291,7 @@ int main()
 		{
 			if (g_usePredictionSourcesPosInTime) // we have already a csv with the prediction of sources pos in time
 			{
-				std::ifstream data("BestSourcesProbabilities.csv");
+				/*std::ifstream data("BestSourcesProbabilities.csv");
 				std::string line;
 				while (std::getline(data, line))
 				{
@@ -330,6 +330,38 @@ int main()
 							simulator.m_probabilityToBeASourcePos[tick].m_sourcesPos.insert(std::make_pair(pos, elem));
 						}
 					}
+				}*/
+
+				std::ifstream data("SourcesProbabilities.csv");
+				std::string line;
+				std::getline(data, line); // The name of columns
+				while (std::getline(data, line))
+				{
+					std::stringstream  lineStream(line);
+					std::string        cell;
+
+					// tick
+					std::getline(lineStream, cell, ',');
+					int tick = std::stoi(cell);
+
+					// source pos
+					std::getline(lineStream, cell, ';');
+					int row = std::stoi(cell);
+					std::getline(lineStream, cell, ',');
+					int col = std::stoi(cell);
+					TablePos pos = TablePos(row, col);
+
+					// probability
+					std::getline(lineStream, cell, ',');
+					double probability = std::stod(cell);
+
+					// power
+					std::getline(lineStream, cell, ',');
+					float power = std::stof(cell);
+					{
+						CountProbabilityPowerSource elem = CountProbabilityPowerSource(1, power, probability);
+						simulator.m_probabilityToBeASourcePos[tick].m_sourcesPos.insert(std::make_pair(pos, elem));
+					}
 				}
 			}
 
@@ -351,13 +383,17 @@ int main()
 
 				for (int i = 0; i < g_numberOfTicksOnDay; i++)
 				{
-					int nrOfSourcesForCurrentTick = simulator.m_probabilityToBeASourcePos[i].m_sourcesPos.size();
+					if (simulator.m_probabilityToBeASourcePos[i].m_sourcesPos.size() == 0)
+						continue;
+
+					int nrOfSourcesForCurrentTick = 0;
 
 					// First we want to override the source power with the average of sources for the current tick
 					float powerAverage = 0.0f;
 					for (std::map<TablePos, CountProbabilityPowerSource>::iterator it = simulator.m_probabilityToBeASourcePos[i].m_sourcesPos.begin(); it != simulator.m_probabilityToBeASourcePos[i].m_sourcesPos.end(); it++)
 					{
 						powerAverage += it->second.power;
+						nrOfSourcesForCurrentTick += it->second.count;
 					}
 					powerAverage /= nrOfSourcesForCurrentTick;
 
