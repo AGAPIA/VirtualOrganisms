@@ -11,9 +11,9 @@
 extern int g_maxDistanceToConnectNodes;
 
 #if SIMULATION_MODE==SIMULATE_PS_MODEL
-BoardObject::BoardPublisherSubscriberManager::BoardPublisherSubscriberManager(BoardObject* _parent)
+BoardObject::BoardPublisherSubscriberManager::BoardPublisherSubscriberManager()
 {
-	parent = _parent;
+	m_parent = nullptr;
 
 	reset();
 }
@@ -47,19 +47,21 @@ void BoardObject::BoardPublisherSubscriberManager::onItemRemoved(const TablePos&
 	}
 	else
 	{
-		SourceInfo& srcInfo = parent->m_posToSourceMap[pos];
+		SourceInfo& srcInfo = m_parent->m_posToSourceMap[pos];
 
 		// Remove the right collection
 		assert(srcInfo.sourceType != ST_GENERIC);
 		auto& targetCollection = srcInfo.sourceType == ST_SUBSCRIBER ? m_subscribersCollection : m_publishersCollection;
-		assert(targetCollection.find(pos) == targetCollection.end() && "This node already exists !");
-		targetCollection.insert(pos);
+		assert(targetCollection.find(pos) != targetCollection.end() && "This node doesn't exists !");
+		targetCollection.erase(pos);
 
 		// Iterate through all connections for this and remove them
-		for (const auto& it : srcInfo.m_connectedTo)
+		while (srcInfo.m_connectedTo.empty() == false)
 		{
+			const auto& it = *srcInfo.m_connectedTo.begin();
+
 			const TablePos& otherPos = it.first;
-			SourceInfo& otherSrcInfo = parent->m_posToSourceMap[otherPos];
+			SourceInfo& otherSrcInfo = m_parent->m_posToSourceMap[otherPos];
 			const SourceInfo::LinkInfo& linkInfo = it.second;
 
 			// Decrease ref count for mirrors used along the link
@@ -82,23 +84,28 @@ void BoardObject::BoardPublisherSubscriberManager::onItemRemoved(const TablePos&
 			srcInfo.RemoveConnectionTo(pos, otherPos, otherSrcInfo);
 		}
 
-		do_sanityChecks();
+		do_sanityChecks(true);
 
 		solvePublishersSubscribersConnections(nullptr);
 	}
 }
 
-void BoardObject::BoardPublisherSubscriberManager::do_sanityChecks()
+void BoardObject::BoardPublisherSubscriberManager::do_sanityChecks(const bool justRemovingOne)
 {
 	// First check:----- are all sources inside m_subscribersCollection and m_publishersCollection ?
 	{
-		const auto& allSourcesInVO = parent->m_posToSourceMap;
-		assert(allSourcesInVO.size() == m_subscribersCollection.size() + m_publishersCollection.size() && "the collections are not ok!");
-		for (const auto& it : allSourcesInVO)
+		// Bypass the testing on remove sources events since this code is called BEFORE deleting the sources phyiscally from board
+		/*if (!justRemovingOne)
 		{
-			const auto& targetCollection = it.second.sourceType == ST_PUBLISHER ? m_publishersCollection : m_subscribersCollection;
-			assert(targetCollection.find(it.first) != targetCollection.end() && "the node is not in the right collection");
+			const auto& allSourcesInVO = m_parent->m_posToSourceMap;
+			assert((allSourcesInVO.size() == m_subscribersCollection.size() + m_publishersCollection.size()) && "the collections are not ok!");
+			for (const auto& it : allSourcesInVO)
+			{
+				const auto& targetCollection = it.second.sourceType == ST_PUBLISHER ? m_publishersCollection : m_subscribersCollection;
+				assert(targetCollection.find(it.first) != targetCollection.end() && "the node is not in the right collection");
+			}
 		}
+		*/
 	}
 
 	// Second check: ------ Check if links and refcounting are ok
@@ -110,7 +117,7 @@ void BoardObject::BoardPublisherSubscriberManager::do_sanityChecks()
 
 		for (const TablePos& subscriberPos : m_subscribersCollection)
 		{
-			const SourceInfo& srcInfo = parent->m_posToSourceMap[subscriberPos];
+			const SourceInfo& srcInfo = m_parent->m_posToSourceMap[subscriberPos];
 
 			for (const auto& it : srcInfo.m_connectedTo)
 			{
@@ -169,13 +176,21 @@ void BoardObject::BoardPublisherSubscriberManager::do_sanityChecks()
 		}
 		// Check m_publisherPosToMirrorNodes and its copy
 		{
-			assert(m_publisherPosToMirrorNodes.size() != publisherPosToMirrorNodesByLinks.size());
+			//assert(m_publisherPosToMirrorNodes.size() == publisherPosToMirrorNodesByLinks.size());
 			for (const auto&it : m_publisherPosToMirrorNodes)
 			{
 				const TablePos& publisherPos_board = it.first;
 				const std::set<TablePos>& setOfMirrors_board = it.second;
 
 				const auto& it_byLinks = publisherPosToMirrorNodesByLinks.find(publisherPos_board);
+
+				if (setOfMirrors_board.empty())
+				{
+					// I'm expecting to be not found in the links too
+					assert(it_byLinks == publisherPosToMirrorNodesByLinks.end());
+					continue;
+				}
+
 				assert(it_byLinks != publisherPosToMirrorNodesByLinks.end());
 
 				const std::set<TablePos>& setOfMirrors_byLinks = it_byLinks->second;
@@ -212,7 +227,7 @@ void BoardObject::BoardPublisherSubscriberManager::printDetails(std::ostream& ou
 
 		outStream << std::endl << "Subscribers serving: " << std::endl;
 		
-		for (const auto& it : parent->m_posToSourceMap[publisherPos].m_connectedTo)
+		for (const auto& it : m_parent->m_posToSourceMap[publisherPos].m_connectedTo)
 		{
 			const TablePos& subscriber = it.first;
 			const SourceInfo::LinkInfo& linkInfo = it.second;
@@ -249,8 +264,9 @@ void BoardObject::BoardPublisherSubscriberManager::printDetails(std::ostream& ou
 // Collects all nodes' positions in the VO
 void BoardObject::BoardPublisherSubscriberManager::collectNodesForMirroring(std::unordered_set<TablePos, TablePosHasher>& outNodes)
 {
-	std::vector<Cell*> outCells(MAX_ROWS * MAX_COLS);
-	parent->collectAllNodesFromRoot(parent->getRootCell(), outCells);
+	std::vector<Cell*> outCells;
+	outCells.reserve((MAX_ROWS * MAX_COLS));
+	m_parent->collectAllNodesFromRoot(m_parent->getRootCell(), outCells);
 
 	outNodes.clear();
 	for (const Cell* cell : outCells)
@@ -281,17 +297,15 @@ void BoardObject::BoardPublisherSubscriberManager::closestVONodeToPosition(const
 	}
 }
 
-int compareByRemainingPower(std::pair<TablePos, float>& pos1, std::pair<TablePos, float>& pos2)
+bool compareByRemainingPower(const std::pair<TablePos, float>& pos1, const std::pair<TablePos, float>& pos2)
 {
 	const float power1 = pos1.second;
 	const float power2 = pos2.second;
 
 	if (power1 < power2)
-		return -1;
-	if (power1 > power2)
-		return 1;
+		return true;
 
-	return 0;
+	return false;
 }
 
 void BoardObject::BoardPublisherSubscriberManager::sortAndFilterPublishersAndSubscribers(std::vector<TablePos>& subscribers, std::vector<TablePos>& publishers, std::unordered_set<TablePos, TablePosHasher>& voNodes, const bool forMirroring)
@@ -309,7 +323,7 @@ void BoardObject::BoardPublisherSubscriberManager::sortAndFilterPublishersAndSub
 		output_extended.clear();
 		for (const auto& inputIt : input)
 		{
-			const SourceInfo& srcInfo = parent->m_posToSourceMap[inputIt];
+			const SourceInfo& srcInfo = m_parent->m_posToSourceMap[inputIt];
 			const float remainingPower = srcInfo.getRemainingPower();
 			if (remainingPower > 0)
 			{
@@ -349,13 +363,17 @@ void BoardObject::BoardPublisherSubscriberManager::solveDirectConnections(std::v
 {
 	for (const TablePos& publisherPos : publishers)
 	{
-		SourceInfo& publisherSrcInfo = parent->m_posToSourceMap[publisherPos];
+		SourceInfo& publisherSrcInfo = m_parent->m_posToSourceMap[publisherPos];
 		assert(publisherSrcInfo.getRemainingPower() > 0);
 
 		for (const TablePos& subscriberPos : subscribers)
 		{
-			SourceInfo& subscriberSrcInfo = parent->m_posToSourceMap[publisherPos];
-			assert(subscriberSrcInfo.getRemainingPower() > 0);
+			SourceInfo& subscriberSrcInfo = m_parent->m_posToSourceMap[subscriberPos];
+			//assert(subscriberSrcInfo.getRemainingPower() > 0);
+
+			// This subscriber may become depleted over this direct connection algorithm, so no worries
+			if (subscriberSrcInfo.getRemainingPower() == 0.0f)
+				continue;
 
 			// Is the right service ?
 			if (subscriberSrcInfo.serviceType != publisherSrcInfo.serviceType)
@@ -363,6 +381,13 @@ void BoardObject::BoardPublisherSubscriberManager::solveDirectConnections(std::v
 
 			// Can the publisher satisfy this subscriber directly ?
 			if (manhattanDist(publisherPos, subscriberPos) > g_maxDistanceToConnectNodes)
+				continue;
+
+			// Check if there is already a connection between the two nodes
+			// If there it is, just increase the flow
+			// It could happen that initially you don't have enough capacity because there are other sources around, but when you remove them capacity for this link can increase
+			const bool res = checkCapacityMaximizePublisherAndSubscriber(publisherPos, subscriberPos);
+			if (res)
 				continue;
 
 			SourceInfo::LinkInfo linkInfo;
@@ -383,7 +408,7 @@ void BoardObject::BoardPublisherSubscriberManager::solveDirectConnections(std::v
 	}
 }
 
-bool BoardObject::BoardPublisherSubscriberManager::connectNodesByHeuristic(const TablePos& startPos, const TablePos& subscriberPos, const std::unordered_set<TablePos, TablePosHasher>& mirroringSuitableNodes, std::vector<TablePos> outPath)
+bool BoardObject::BoardPublisherSubscriberManager::connectNodesByHeuristic(const TablePos& startPos, const TablePos& subscriberPos, const std::unordered_set<TablePos, TablePosHasher>& mirroringSuitableNodes, std::vector<TablePos>& outPath)
 {
 	// Just some sanity checks...
 	assert((m_publishersCollection.find(startPos) != m_publishersCollection.end() || m_mirrorNodesCollection.find(MirrorNodeInfo(startPos)) != m_mirrorNodesCollection.end()) && "The start pos isn't a publisher or mirror ");
@@ -442,17 +467,25 @@ void BoardObject::BoardPublisherSubscriberManager::solveMirrorConnections(std::v
 {
 	for (const TablePos& publisherPos : publishers)
 	{
-		SourceInfo& publisherSrcInfo = parent->m_posToSourceMap[publisherPos];
+		SourceInfo& publisherSrcInfo = m_parent->m_posToSourceMap[publisherPos];
 		assert(publisherSrcInfo.getRemainingPower() > 0);
 
 		for (const TablePos& subscriberPos : subscribers)
 		{
-			SourceInfo& subscriberSrcInfo = parent->m_posToSourceMap[publisherPos];
+			SourceInfo& subscriberSrcInfo = m_parent->m_posToSourceMap[subscriberPos];
 			assert(subscriberSrcInfo.getRemainingPower() > 0);
 
 			// Is the right service ?
 			if (subscriberSrcInfo.serviceType != publisherSrcInfo.serviceType)
 				continue;
+
+			// Check if there is already a connection between the two nodes
+			// If there it is, just increase the flow
+			// It could happen that initially you don't have enough capacity because there are other sources around, but when you remove them capacity for this link can increase
+			const bool resMaxi = checkCapacityMaximizePublisherAndSubscriber(publisherPos, subscriberPos);
+			if (resMaxi)
+				continue;
+
 
 			// Connect them by mirroring below. 
 			const int publisherToSubscriberDist = manhattanDist(publisherPos, subscriberPos);
@@ -491,21 +524,39 @@ void BoardObject::BoardPublisherSubscriberManager::solveMirrorConnections(std::v
 
 
 				// Remove the nodes used from suitable for mirroring
-				// And add them to the mirror data structures
 				for (const TablePos& mirrorUsedPos : pathWithMirrors)
 				{
 					const auto& it = mirroringSuitableNodes.find(mirrorUsedPos);
 					if (it != mirroringSuitableNodes.end())
 					{
 						mirroringSuitableNodes.erase(it);
+					}
+					else
+					{
+						// As a sanity check, only if publisher was starting point he couldn't ve in the mirrorsSuitableNodes
+						const bool isMirrorThePublisher = mirrorUsedPos == publisherPos;
 
+						bool isMirrorOfThisPublisher = false;
+						const auto& mirrorIterPub = m_mirrorNodesCollection.find(mirrorUsedPos);
+						if (mirrorIterPub != m_mirrorNodesCollection.end())
+						{
+							isMirrorOfThisPublisher = mirrorIterPub->parentPublisherPos == publisherPos;
+						}
+
+						assert((isMirrorOfThisPublisher || isMirrorThePublisher) && "A mirror node was used but can't be found in the data structures...");
+					}
+
+
+					// And add them to the mirror data structures
+					if (mirrorUsedPos != publisherPos)
+					{
 						// If not already marked in the publisher mirror list, add it there
 						auto& mirrorNodesForPublisher = m_publisherPosToMirrorNodes[publisherPos];
 						if (mirrorNodesForPublisher.find(mirrorUsedPos) == mirrorNodesForPublisher.end())
 							mirrorNodesForPublisher.insert(mirrorUsedPos);
 
 						// Add in the other data structures collecting all mirror nodes details
-						auto& it = m_mirrorNodesCollection.find(MirrorNodeInfo(mirrorUsedPos));
+						auto & it = m_mirrorNodesCollection.find(MirrorNodeInfo(mirrorUsedPos));
 						if (it == m_mirrorNodesCollection.end())
 						{
 							// New entry, first time mirror node used
@@ -519,12 +570,7 @@ void BoardObject::BoardPublisherSubscriberManager::solveMirrorConnections(std::v
 						MirrorNodeInfo& mirrorNodeInfo = const_cast<MirrorNodeInfo&>(*it);
 						mirrorNodeInfo.addSubscriber(subscriberPos);
 					}
-					else
-					{
-						// As a sanity check, only if publisher was starting point he couldn't ve in the mirrorsSuitableNodes
-						assert(*it == publisherPos && "A mirror node was used but can't be found in the data structures...");
 					}
-				}
 			}
 
 			assert(publisherSrcInfo.getRemainingPower() >= 0);
@@ -560,7 +606,7 @@ void BoardObject::BoardPublisherSubscriberManager::solvePublishersSubscribersCon
 float BoardObject::BoardPublisherSubscriberManager::getCurrentPowerUsed() const
 {
 	float totalUsedPower = 0.0f;
-	for (const auto& it : parent->m_posToSourceMap)
+	for (const auto& it : m_parent->m_posToSourceMap)
 	{
 		const SourceInfo& srcInfo = it.second;
 		if (srcInfo.sourceType != ST_PUBLISHER)
@@ -570,6 +616,39 @@ float BoardObject::BoardPublisherSubscriberManager::getCurrentPowerUsed() const
 	}
 
 	return totalUsedPower;
+}
+
+bool BoardObject::BoardPublisherSubscriberManager::checkCapacityMaximizePublisherAndSubscriber(const TablePos& publisherPos, const TablePos& subscriberPos)
+{
+	SourceInfo& publisherSrc = m_parent->m_posToSourceMap[publisherPos];
+	SourceInfo& subscriberSrc = m_parent->m_posToSourceMap[subscriberPos];
+	assert(publisherSrc.sourceType == ST_PUBLISHER);
+	assert(subscriberSrc.sourceType == ST_SUBSCRIBER);
+
+	auto& itP = publisherSrc.m_connectedTo.find(subscriberPos);
+	if (itP == publisherSrc.m_connectedTo.end())
+		return false;
+	SourceInfo::LinkInfo& publisherToSubscriberLink = const_cast<SourceInfo::LinkInfo&>(itP->second);
+
+	auto& itS = subscriberSrc.m_connectedTo.find(publisherPos);
+	if (itS == subscriberSrc.m_connectedTo.end())
+		return false;
+	SourceInfo::LinkInfo & subscriberToSubscriberLink = const_cast<SourceInfo::LinkInfo&>(itS->second);
+
+	// Link to both sides were found. Now maximize the connection !
+	const int flowToAdd = (int)std::min(publisherSrc.getRemainingPower(), subscriberSrc.getRemainingPower());
+	if (flowToAdd <= 0.0f)
+		return false;
+
+	// Update the flow
+	publisherToSubscriberLink.flow += flowToAdd;
+	subscriberToSubscriberLink.flow += flowToAdd;
+	publisherSrc.m_usedPower += flowToAdd;
+	subscriberSrc.m_usedPower += flowToAdd;
+
+	do_sanityChecks();
+
+	return true;
 }
 
 

@@ -123,7 +123,8 @@ void trimCommentsAndWhiteSpaces(std::string& str)
 
 void SourceInfo::AddConnectionFromPublisherToSubscriber(const TablePos& thisPos, const TablePos& otherPos, SourceInfo& other, const SourceInfo::LinkInfo& linkData)
 {
-	assert(other.sourceType == ST_PUBLISHER && "Please call this only for publisher. Consumer logic will be treated from publishers one automatically");
+	assert(this->sourceType == ST_PUBLISHER && "Call this only for publishers to subscribers");
+	assert(other.sourceType == ST_SUBSCRIBER && "Please call this only for publisher. Consumer logic will be treated from publishers one automatically");
 	assert((this->getRemainingPower() > 0 && other.getRemainingPower() > 0) && "You are trying two connect two nodes but at least one of them has 0 remaining capacity");
 
 	// Check if both sides don't have this connection
@@ -158,6 +159,9 @@ void SourceInfo::RemoveConnectionTo(const TablePos& thisPos, const TablePos& oth
 	this->m_usedPower	-= linkInfo.flow;
 	other.m_usedPower	-= linkInfo.flow;
 
+	this->m_connectedTo.erase(itInThis);
+	other.m_connectedTo.erase(itInOther);
+
 	// Just sanity checks
 	this->do_sanitycheck_powerUsed();
 	other.do_sanitycheck_powerUsed();
@@ -173,7 +177,7 @@ void SourceInfo::do_sanitycheck_powerUsed()
 
 	assert((fabs(this->m_usedPower - sum) < EPSILON) && ("Incorrect flow used variable when compared with connected sources!"));
 
-	assert(this->m_usedPower > 0 && this->m_usedPower <= this->getPower());
+	assert(this->m_usedPower >= 0.0f && this->m_usedPower <= this->getPower());
 }
 
 

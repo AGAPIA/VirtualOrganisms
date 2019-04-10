@@ -55,15 +55,13 @@
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <Text Include="TODOLIst.txt">
-      <Filter>Source Files</Filter>
-    </Text>
     <Text Include="simulator.txt">
       <Filter>Source Files</Filter>
     </Text>
-    <Text Include="todo.txt" />
     <Text Include="simulator_psmodel.txt" />
     <Text Include="saved_ps.txt" />
+    <Text Include="results.txt" />
+    <Text Include="TODO.txt" />
   </ItemGroup>
   <ItemGroup>
     <None Include="config.ini">

@@ -23,7 +23,7 @@
     <ProjectGuid>{F2BC23D4-0FCC-4D3C-9873-7831DBEB16FE}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>
     <RootNamespace>SelfAssemblingTreeSimulator</RootNamespace>
-    <WindowsTargetPlatformVersion>10.0.17134.0</WindowsTargetPlatformVersion>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
@@ -42,7 +42,7 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
-    <PlatformToolset>v141</PlatformToolset>
+    <PlatformToolset>v142</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
@@ -162,11 +162,11 @@
     <ClInclude Include="Utils.h" />
   </ItemGroup>
   <ItemGroup>
+    <Text Include="results.txt" />
     <Text Include="saved_ps.txt" />
     <Text Include="simulator.txt" />
     <Text Include="simulator_psmodel.txt" />
-    <Text Include="todo.txt" />
-    <Text Include="TODOLIst.txt" />
+    <Text Include="TODO.txt" />
   </ItemGroup>
   <ItemGroup>
     <None Include="config.ini" />

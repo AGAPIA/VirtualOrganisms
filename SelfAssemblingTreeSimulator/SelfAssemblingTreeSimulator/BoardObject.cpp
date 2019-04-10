@@ -586,7 +586,6 @@ BoardObject::BoardObject()
 	: m_colGenerator(nullptr)
 	, m_rowGenerator(nullptr)
 	, m_numTicksRemainingToUpdateSources(0)
-	, m_PSModeManager(this)
 {
 #if STRUCTURE_MODE == DIRECTIONAL_MODE
 	const int rootColumn = rand() % (MAX_COLS / 3);
@@ -596,17 +595,21 @@ BoardObject::BoardObject()
 	setRootLocation(0, MAX_COLS - 1);
 #endif
 
+	m_PSModeManager.setParent(this);
 }
 
 BoardObject::BoardObject(const BoardObject& other)
-	: m_PSModeManager(this)
 {
 	copyDataFrom(other);
+
+	m_PSModeManager.setParent(this);
 }
 
 void BoardObject::operator=(const BoardObject& other)
 {
 	copyDataFrom(other);
+
+	m_PSModeManager.setParent(this);
 }
 
 void BoardObject::resetCells(const bool resetSymbolsToo /*= true*/)

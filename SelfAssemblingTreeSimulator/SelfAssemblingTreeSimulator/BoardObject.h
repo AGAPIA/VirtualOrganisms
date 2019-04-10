@@ -133,6 +133,7 @@ struct BoardObject
 			if (nodePos != other.nodePos)
 				return false;
 
+			/*
 			if (parentPublisherPos != other.parentPublisherPos)
 				return false;
 
@@ -145,6 +146,7 @@ struct BoardObject
 				if (!found)
 					return false;
 			}
+			*/
 
 			return true;
 		}
@@ -160,8 +162,7 @@ struct BoardObject
 
 	struct BoardPublisherSubscriberManager
 	{
-		BoardPublisherSubscriberManager(BoardObject* _parent);
-		BoardObject* parent;
+		BoardPublisherSubscriberManager();
 
 		// m_publisherPosToMirrorNodes[Ppos] = list {pos1, pos2, ...., posN} means that the 
 		// publisher located at position Ppos is replicated at positions pos1 pos2 ...posN in the VO
@@ -191,11 +192,15 @@ struct BoardObject
 
 		// Print details about p/s
 		void printDetails(std::ostream& outStream);
-		void do_sanityChecks(); // Checks if all internal data structures are matching 
+		void do_sanityChecks(const bool justRemovingOne = false); // Checks if all internal data structures are matching 
 
 		float getCurrentPowerUsed() const;
 
+		void setParent(BoardObject* _parent) { m_parent = _parent; }
+
 	private:
+
+		BoardObject* m_parent;
 
 		// Sort them by remaining flow, and filter those with 0 cap
 		void sortAndFilterPublishersAndSubscribers(std::vector<TablePos>& subscribers, std::vector<TablePos>& publishers, std::unordered_set<TablePos, TablePosHasher>& voNodes, const bool forMirroring);
@@ -205,7 +210,10 @@ struct BoardObject
 		void solveMirrorConnections(std::vector<TablePos>& subscribers, std::vector<TablePos>& publishers, std::unordered_set<TablePos, TablePosHasher>& mirroringSuitableNodes);
 
 		// Connects startPos and subscriberPos by our heuristics. Suppose that startPos is a publisher or mirror
-		bool connectNodesByHeuristic(const TablePos& startPos, const TablePos& subscriberPos, const std::unordered_set<TablePos, TablePosHasher>& mirroringSuitableNodes, std::vector<TablePos> outPath);
+		bool connectNodesByHeuristic(const TablePos& startPos, const TablePos& subscriberPos, const std::unordered_set<TablePos, TablePosHasher>& mirroringSuitableNodes, std::vector<TablePos>& outPath);
+		
+		// Return true if the capcity between publisher and subscriber could be maximized (i.e. if there is free power unused in both sides)
+		bool checkCapacityMaximizePublisherAndSubscriber(const TablePos& publisherPos, const TablePos& subscriberPos);
 	};
 #endif
 

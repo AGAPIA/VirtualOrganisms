@@ -1,0 +1,2 @@
+- do computations only for root board but also allow reconfiguration sim to work
+- solve connections, for instance what if the flow between two existing nodes can improve because other links were deleted ?
